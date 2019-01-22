@@ -1,9 +1,16 @@
 
+import sys
 from utils import make_plots_multiple
 
 def main():
-    make_plots_multiple('./outdir/iota_psi_dist_ra_dec_marg_phase/run2/', './misc_plots/', blocks = "all")
+    print(len(sys.argv))
+    inputdir = sys.argv[1]
+    outputdir = sys.argv[2]
+    make_plots_multiple(inputdir, outputdir, blocks = "all")
 
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) < 3:
+        raise ValueError("Missing output dir")
+    else:
+        main()
 
