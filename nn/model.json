@@ -1,0 +1,21 @@
+{
+    "layers": 10,
+    "mixed layers": 0,
+    "neurons": 500,
+    "mixed neurons": 100,
+    "activation": "relu",
+    "dropout": 0.0,
+    "learning rate": 0.001,
+    "lr decay": 1e-3,
+    "batch size": 100,
+    "epochs": 200,
+    "loss": "mean_squared_error",
+    "block size": 5000,
+    "blocks": "all",
+    "sigma": 5.0,
+    "r": 0.1,
+    "notes": "norm inputs",
+    "save": true,
+    "datapath": "./data/iota_psi_dist_ra_dec_marg_phase/",
+    "outdir": "./outdir/iota_psi_dist_ra_dec_marg_phase/"
+}
