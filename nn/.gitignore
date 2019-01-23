@@ -3,3 +3,6 @@ data/
 # outdirs
 outdir
 misc_plots
+current_run/
+# models
+*.json
