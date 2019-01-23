@@ -162,7 +162,7 @@ def make_plots_multiple(results_path, outdir, fname='results.h5', parameters=Non
     Search path for file results files with given name and make combined plots.
     """
     hf = h5py.File(results_path + fname, 'r')
-    d = dict()
+    d = {}
     if blocks == 'all':
         blocks = ['block{}'.format(b) for b in range(len(hf.keys()))]
     else:
