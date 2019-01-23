@@ -353,6 +353,8 @@ def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', sche
     grp.create_dataset('y_pred', data=preds)
     grp.create_dataset('x', data=x)
     grp.create_dataset('parameters', data=list(parameters))
+    for key, value in history.history.iteritems():
+        grp.create_dataset(key, data=value)
     hf.close()
 
     return history, model
@@ -399,7 +401,7 @@ def main():
         shutil.rmtree(tmp_outdir)
     os.mkdir(tmp_outdir)
     # copy json file for run
-    shutil.copy('model.json', tmp_outdir)
+    shutil.copy(model_path, tmp_outdir)
 
     # init class with data
     data = Data(data_path)#, ignore=['geocent_time'])
