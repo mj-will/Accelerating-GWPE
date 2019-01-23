@@ -1,7 +1,10 @@
+#!/usr/bin/env python
+
 # test of basic nn to approximate a loglikelihood
 
 from __future__ import print_function
 
+import sys
 import shutil
 import os
 import json
@@ -18,6 +21,7 @@ plt.style.use('seaborn')
 import keras.backend as K
 from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Dropout, concatenate, Input
+from keras.layers.normalization import BatchNormalization
 from keras.optimizers import SGD, RMSprop, Adam
 from keras.callbacks import LearningRateScheduler, ModelCheckpoint
 from keras import regularizers
@@ -180,6 +184,8 @@ def network(N_intrinsic, N_extrinsic, params):
     N_layers = params['layers']
     N_mixed_layers = params['mixed layers']
     dropout = params['dropout']
+    mixed_dropout = params['mixed dropout']
+    bn = params['batch norm']
     activation = params['activation']
 
     def probit(x):
@@ -189,7 +195,7 @@ def network(N_intrinsic, N_extrinsic, params):
 
     if activation == 'erf':
         activation = tf.erf
-    elif actiavtion == 'probit':
+    elif activation == 'probit':
         actiavtion = probit
 
     if not N_intrinsic and not N_extrinsic:
@@ -211,6 +217,10 @@ def network(N_intrinsic, N_extrinsic, params):
                 IN = Dense(N_neurons[i], activation=activation, name='intrinsic_dense_{}'.format(i))(IN_input)
             else:
                 IN = Dense(N_neurons[i], activation=activation, name='intrinsic_dense_{}'.format(i))(IN)
+                if dropout:
+                    IN = Dropout(dropout)(IN)
+                if bn:
+                    IN = BatchNormalization()(IN)
         output_layers.append(IN)
     if N_extrinsic:
         EX_input = Input(shape=(N_extrinsic,), name='extrinsic_input')
@@ -220,6 +230,10 @@ def network(N_intrinsic, N_extrinsic, params):
                 EX = Dense(N_neurons[i], activation=activation, name='extrinsic_dense_{}'.format(i))(EX_input)
             else:
                 EX = Dense(N_neurons[i], activation=activation, name='extrinsic_dense_{}'.format(i))(EX)
+                if dropout:
+                    EX = Dropout(dropout)(EX)
+                if bn:
+                    EX = BatchNormalization()(EX)
         output_layers.append(EX)
     # make model
     if len(output_layers) > 1:
@@ -229,6 +243,10 @@ def network(N_intrinsic, N_extrinsic, params):
     # add mixed layers:
     for i in range(N_mixed_layers):
         outputs = Dense(N_mixed_neurons[i], activation=activation, name='mixed_dense_{}'.format(i))(outputs)
+        if mixed_dropout:
+            outputs = Dropout(mixed_dropout)(outputs)
+        if bn:
+            outputs = BatchNormalization()(outputs)
     # make final layer
     output_layer = Dense(1, activation='linear', name='output_dense')(outputs)
     model = Model(inputs=inputs, outputs=output_layer)
@@ -305,6 +323,8 @@ def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', sche
     # fit
     history = model.fit(x=X_train, y=Y_train, validation_data=(X_val, Y_val),
                         verbose=2, callbacks=callbacks, **kwargs)
+    # get training output for last epoch
+    training_output = model.predict(X_train)
     # load best weights
     model.load_weights(block_outdir + 'model.h5')
     # delete model file
@@ -314,7 +334,6 @@ def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', sche
     print('Validation loss (best epoch):', eval_loss)
     # predictions
     preds = np.squeeze(model.predict(X_val))
-    training_output = model.predict(X_train)
     # plot loss
     block_outdir = outdir + 'block{}/'.format(block_number)
     if not os.path.isdir(block_outdir):
@@ -350,17 +369,25 @@ def get_model_params():
     params = tf.concat([tf.reshape(v, [-1]) for v in variables_list], axis=0, name='model_params')
     return params
 
-def get_network_params_from_json():
+def get_network_params_from_json(model_path):
     """get the parameters for the nn from the model.json file"""
-    with open("model.json", "r") as read_file:
+    print('Using model: ' + model_path)
+    with open(model_path, "r") as read_file:
         params = json.load(read_file)
     return params
+
+def get_model_path():
+    """Get the model path from command line arguments"""
+    if len(sys.argv) > 1:
+        return sys.argv[1]
+    else:
+        return 'model.json'
 
 def main():
     # main paths
     # get directory for results to be saved in
-
-    network_params = get_network_params_from_json()
+    model_path = get_model_path()
+    network_params = get_network_params_from_json(model_path)
     data_path = network_params['datapath']
     outdir = network_params['outdir']
 
