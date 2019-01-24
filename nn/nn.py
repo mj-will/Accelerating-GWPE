@@ -23,7 +23,7 @@ from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Dropout, concatenate, Input
 from keras.layers.normalization import BatchNormalization
 from keras.optimizers import SGD, RMSprop, Adam
-from keras.callbacks import LearningRateScheduler, ModelCheckpoint
+from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping
 from keras import regularizers
 from keras.losses import kullback_leibler_divergence
 
@@ -187,6 +187,17 @@ def network(N_intrinsic, N_extrinsic, params):
     mixed_dropout = params['mixed dropout']
     bn = params['batch norm']
     activation = params['activation']
+    regularization = params['regularization']
+
+    if not N_intrinsic and not N_extrinsic:
+        raise ValueError('Specified no intrinsic or extrinsic parameters. Cannot make a network with no inputs!')
+
+    if not isinstance(N_neurons, (list, tuple, np.ndarray)):
+        N_neurons = N_neurons * np.ones(N_layers, dtype=int)
+    if not isinstance(N_mixed_neurons, (list, tuple, np.ndarray)):
+        N_mixed_neurons = N_mixed_neurons * np.ones(N_mixed_layers, dtype=int)
+    if not len(N_neurons) is N_layers:
+        raise ValueError('Specified more layers than neurons')
 
     def probit(x):
         """return probit of x"""
@@ -198,15 +209,14 @@ def network(N_intrinsic, N_extrinsic, params):
     elif activation == 'probit':
         actiavtion = probit
 
-    if not N_intrinsic and not N_extrinsic:
-        raise ValueError('Specified no intrinsic or extrinsic parameters. Cannot make a network with no inputs!')
+    if regularization == 'l1':
+        reg = regularizers.l1(params['lambda'])
+    elif regularization == 'l2':
+        reg = regularizers.l2(params['lambda'])
+    else:
+        print('Proceeding with no regularization')
+        reg = None
 
-    if not isinstance(N_neurons, (list, tuple, np.ndarray)):
-        N_neurons = N_neurons * np.ones(N_layers, dtype=int)
-    if not isinstance(N_mixed_neurons, (list, tuple, np.ndarray)):
-        N_mixed_neurons = N_mixed_neurons * np.ones(N_mixed_layers, dtype=int)
-    if not len(N_neurons) is N_layers:
-        raise ValueError('Specified more layers than neurons')
     inputs = []
     output_layers = []
     if N_intrinsic:
@@ -214,9 +224,9 @@ def network(N_intrinsic, N_extrinsic, params):
         inputs.append(IN_input)
         for i in range(N_layers):
             if i is 0:
-                IN = Dense(N_neurons[i], activation=activation, name='intrinsic_dense_{}'.format(i))(IN_input)
+                IN = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN_input)
             else:
-                IN = Dense(N_neurons[i], activation=activation, name='intrinsic_dense_{}'.format(i))(IN)
+                IN = Dense(N_neurons[i], activation=activation,  kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN)
                 if dropout:
                     IN = Dropout(dropout)(IN)
                 if bn:
@@ -227,9 +237,9 @@ def network(N_intrinsic, N_extrinsic, params):
         inputs.append(EX_input)
         for i in range(N_layers):
             if i is 0:
-                EX = Dense(N_neurons[i], activation=activation, name='extrinsic_dense_{}'.format(i))(EX_input)
+                EX = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='extrinsic_dense_{}'.format(i))(EX_input)
             else:
-                EX = Dense(N_neurons[i], activation=activation, name='extrinsic_dense_{}'.format(i))(EX)
+                EX = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='extrinsic_dense_{}'.format(i))(EX)
                 if dropout:
                     EX = Dropout(dropout)(EX)
                 if bn:
@@ -242,7 +252,7 @@ def network(N_intrinsic, N_extrinsic, params):
         outputs = output_layers[-1]
     # add mixed layers:
     for i in range(N_mixed_layers):
-        outputs = Dense(N_mixed_neurons[i], activation=activation, name='mixed_dense_{}'.format(i))(outputs)
+        outputs = Dense(N_mixed_neurons[i], activation=activation, kernel_regularizer=reg, name='mixed_dense_{}'.format(i))(outputs)
         if mixed_dropout:
             outputs = Dropout(mixed_dropout)(outputs)
         if bn:
@@ -277,7 +287,7 @@ def KL(y_true, y_pred):
     Q = (y_pred / tf.reduce_sum(y_pred))
     return kullback_leibler_divergence(P,Q)
 
-def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', schedule=None, parameters=None, **kwargs):
+def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', schedule=None, patience=0, parameters=None, **kwargs):
     block_outdir = outdir + 'block{}/'.format(block_number)
     if not os.path.isdir(block_outdir):
         os.mkdir(block_outdir)
@@ -316,6 +326,8 @@ def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', sche
     if schedule is not None:
         LRS = LearningRateScheduler(schedule=schedule)
         callbacks.append(LRS)
+    if patience:
+        callbacks.append(EarlyStopping(monitor='val_loss', patience=patience))
     # save best model during traing
     checkpoint = ModelCheckpoint(block_outdir + 'model.h5', verbose=0, monitor='val_loss', save_best_only=True, mode='auto')
     callbacks.append(checkpoint)
@@ -342,7 +354,7 @@ def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', sche
     # plots #
     #########
     if mixed_flag:
-        x = np.concatenate(X_val, axis=0)
+        x = np.concatenate(X_val, axis=-1)
     else:
         x = X_val
     make_plots(block_outdir, x=x, y_true=Y_val, y_pred=preds, y_train_true=Y_train, y_train_pred=training_output, history=history, parameters=list(parameters))
@@ -443,11 +455,11 @@ def main():
             if i not in blocks_2_train:
                 continue
             elif not trained:
-                history, updated_model = train_approximator(x_in, x_ex, y, model, block_number=i, outdir=tmp_outdir, parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
+                history, updated_model = train_approximator(x_in, x_ex, y, model, block_number=i, outdir=tmp_outdir, patience=network_params['patience'], parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
                 if transfer:
                     trained=True
             else:
-                history, updated_model_ = train_approximator(x_in, x_ex, y, updated_model, block_number=i, outdir=tmp_outdir, parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
+                history, updated_model_ = train_approximator(x_in, x_ex, y, updated_model, block_number=i, outdir=tmp_outdir, patience=network_params['patience'], parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
             current_lr = float(K.get_value(model.optimizer.lr))
             print('Learning rate after block {}: {}'.format(i, current_lr))
             #K.set_value(model.optimizer.lr, network_params['learning rate'])
