@@ -12,6 +12,8 @@ import numpy as np
 import pandas as pd
 import h5py
 
+np.random.seed(1234)
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -158,19 +160,19 @@ class Data(object):
         diff = int(np.abs(self.N_blocks * block_size - self.N_points))
         # drop inital values
         if norm_logL:
-            self.logL = np.apply_along_axis(self.normalize_logL, 1, (self.logL[:-diff].reshape(self.N_blocks, self.block_size)))
+            self.logL = np.apply_along_axis(self.normalize_logL, 0, self.logL)[:-diff].reshape(self.N_blocks, self.block_size)
         else:
             self.logL = self.logL[:-diff].reshape(self.N_blocks, self.block_size)
         # intrinsic
         if self.N_intrinsic:
             if norm_intrinsic:
-                self.intrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 1, (self.intrinsic_parameters[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)))
+                self.intrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.intrinsic_parameters)[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
             else:
                 self.intrinsic_parameters = self.intrinsic_parameters[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
         # extrinsic
         if self.N_extrinsic:
             if norm_extrinsic:
-                self.extrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 1, (self.extrinsic_parameters[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)))
+                self.extrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.extrinsic_parameters)[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
             else:
                 self.extrinsic_parameters = self.extrinsic_parameters[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
         print('X shape:', self.intrinsic_parameters.shape, self.extrinsic_parameters.shape)
@@ -281,13 +283,8 @@ def custom_loss(a, sigma, r=0.01):
 
     return loss_function
 
-def KL(y_true, y_pred):
-    """Return kullback-Leibler divergence"""
-    P = (y_true / tf.reduce_sum(y_true))
-    Q = (y_pred / tf.reduce_sum(y_pred))
-    return kullback_leibler_divergence(P,Q)
 
-def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', schedule=None, patience=0, parameters=None, **kwargs):
+def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', schedule=None, patience=0, parameters=None, save_model=True, **kwargs):
     block_outdir = outdir + 'block{}/'.format(block_number)
     if not os.path.isdir(block_outdir):
         os.mkdir(block_outdir)
@@ -340,7 +337,8 @@ def train_approximator(X_IN, X_EX, Y, model, block_number=0, outdir = './', sche
     # load best weights
     model.load_weights(block_outdir + 'model.h5')
     # delete model file
-    os.remove(block_outdir + 'model.h5')
+    if not save_model:
+        os.remove(block_outdir + 'model.h5')
     # evaluate best epoch
     eval_loss = model.evaluate(x=X_val, y=Y_val, verbose=2)
     print('Validation loss (best epoch):', eval_loss)
@@ -383,12 +381,9 @@ def get_model_params():
     params = tf.concat([tf.reshape(v, [-1]) for v in variables_list], axis=0, name='model_params')
     return params
 
-def get_network_params_from_json(model_path):
-    """get the parameters for the nn from the model.json file"""
-    print('Using model: ' + model_path)
-    with open(model_path, "r") as read_file:
-        params = json.load(read_file)
-    return params
+def KL(y_true, y_pred):
+    """Return kullback-Leibler divergence"""
+    return tf.reduce_sum(y_true * tf.log(y_true / y_pred))
 
 def get_model_path():
     """Get the model path from command line arguments"""
@@ -446,6 +441,7 @@ def main():
     else:
         print('Using' + network_params['loss'])
         model.compile(Adam(lr=network_params['learning rate'], decay=network_params['lr decay']), loss=network_params['loss'], metrics=[KL])
+        #model.compile(RMSprop(lr=network_params['learning rate'], decay=network_params['lr decay']), loss=network_params['loss'], metrics=[KL])
     schedule = get_schedule(network_params['learning rate'])
 
     if train_blocks:
@@ -455,11 +451,11 @@ def main():
             if i not in blocks_2_train:
                 continue
             elif not trained:
-                history, updated_model = train_approximator(x_in, x_ex, y, model, block_number=i, outdir=tmp_outdir, patience=network_params['patience'], parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
+                history, updated_model = train_approximator(x_in, x_ex, y, model, block_number=i, outdir=tmp_outdir, save_model=network_params['save model'], patience=network_params['patience'], parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
                 if transfer:
                     trained=True
             else:
-                history, updated_model_ = train_approximator(x_in, x_ex, y, updated_model, block_number=i, outdir=tmp_outdir, patience=network_params['patience'], parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
+                history, updated_model_ = train_approximator(x_in, x_ex, y, updated_model, block_number=i, outdir=tmp_outdir, save_model=network_params['save model'], patience=network_params['patience'], parameters=data.parameters, epochs=network_params['epochs'], batch_size=network_params['batch size'])
             current_lr = float(K.get_value(model.optimizer.lr))
             print('Learning rate after block {}: {}'.format(i, current_lr))
             #K.set_value(model.optimizer.lr, network_params['learning rate'])
