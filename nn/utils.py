@@ -19,6 +19,15 @@ import corner
 
 from scipy.stats import ks_2samp
 
+from keras.models import Sequential, Model
+from keras.layers import Dense, Activation, Dropout, concatenate, Input
+from keras.layers.normalization import BatchNormalization
+from keras import regularizers
+
+import tensorflow as tf
+
+from scipy.special import expit as sigmoid
+
 ###########
 # General #
 ###########
@@ -55,6 +64,159 @@ def get_network_params_from_json(model_path, verbose=1):
     with open(model_path, "r") as read_file:
         params = json.load(read_file)
     return params
+
+def get_predictions(x, model, N_intrinsic, N_extrinsic, weights_file=None):
+    """Get prediction froma model or model file
+
+    Args:
+        x: Values to evaluate
+        model: An instance of a keras model or a string pointing to a .json model
+        N_intrinsic: Number of intrinsic parameters
+        N_extrinsic: Number of extrinsic parameters
+
+    """
+    params = False
+    if type(model) == str:
+        if ".json" in model:
+            params = get_network_params_from_json(model)
+            model = network(N_intrinsic, N_extrinsic, params)
+        else:
+            raise ValueError("Trying to load model from unknown format")
+    elif type(model) == keras.models.Model:
+        pass
+    else:
+        raise ValueError("Unknown model format")
+    # load weights if file provided
+    # need to in load weights for a block, but model hasn't changed
+    if weights_file is not None:
+        model.load_weights(weights_file)
+    elif params:
+        print('Built model from json but could not load weights')
+
+    return model.predict(x), model
+
+def compare_to_posterior(x, posterior_values, model, N_intrinsic, N_extrinsic, weights_file=None, additional_metrics=None, return_model=False):
+    """Compare the output of the nn with the true posterior values
+
+    By default evaluates:
+    * KL divergence
+    * Mean squared error
+    * Max. squared error
+
+    Args:
+        x: Parameter values for posterior samples
+        posterior_values: Posterior samples
+        model: An instance of a keras model or a string pointing to a .json model
+        N_intrinsic: Number of intrinsic parameters
+        N_extrinsic: Number of extrinsic parameters
+        weights_file: Path to weights file
+        additional_metrics: List of additional metrics to use
+        return_model: Boolean, return the loaded keras model
+
+    Returns:
+        metrics: A dictionary of metrics
+        keras_model (optiional): The loaded keras model
+    """
+    preds, keras_model = get_predictions(x, model, N_intrinsic, N_extrinsic, weights_file=None)
+    metrics = {}
+    metrics["KL"] = np.sum(posterior_values * np.log(posterior_values / preds))
+    metrics["MeanSE"] = np.mean((posterior_values - pres) ** 2.)
+    metrics["MaxSE"] = np.max((posterior_values - pres) ** 2.)
+
+    if additional_metrics not None:
+        for name, f in additional_metrics.iteritems():
+            metrics[name] = f(posterior_values, preds)
+    if return_model:
+        return metrics, keras_model
+    else:
+        return metrics
+
+def network(N_intrinsic, N_extrinsic, params):
+    """Get the model for neural network"""
+    N_neurons = params['neurons']
+    N_mixed_neurons = params['mixed neurons']
+    N_layers = params['layers']
+    N_mixed_layers = params['mixed layers']
+    dropout = params['dropout']
+    mixed_dropout = params['mixed dropout']
+    bn = params['batch norm']
+    activation = params['activation']
+    regularization = params['regularization']
+
+    if not N_intrinsic and not N_extrinsic:
+        raise ValueError('Specified no intrinsic or extrinsic parameters. Cannot make a network with no inputs!')
+
+    if not isinstance(N_neurons, (list, tuple, np.ndarray)):
+        N_neurons = N_neurons * np.ones(N_layers, dtype=int)
+    if not isinstance(N_mixed_neurons, (list, tuple, np.ndarray)):
+        N_mixed_neurons = N_mixed_neurons * np.ones(N_mixed_layers, dtype=int)
+    if not len(N_neurons) is N_layers:
+        raise ValueError('Specified more layers than neurons')
+
+    def probit(x):
+        """return probit of x"""
+        normal = tf.distributions.Normal(loc=0., scale=1.)
+        return normal.cdf(x)
+
+    if activation == 'erf':
+        activation = tf.erf
+    elif activation == 'probit':
+        actiavtion = probit
+
+    if regularization == 'l1':
+        reg = regularizers.l1(params['lambda'])
+    elif regularization == 'l2':
+        reg = regularizers.l2(params['lambda'])
+    else:
+        print('Proceeding with no regularization')
+        reg = None
+
+    inputs = []
+    output_layers = []
+    if N_intrinsic:
+        IN_input = Input(shape=(N_intrinsic,), name='intrinsic_input')
+        inputs.append(IN_input)
+        for i in range(N_layers):
+            if i is 0:
+                IN = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN_input)
+            else:
+                IN = Dense(N_neurons[i], activation=activation,  kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN)
+                if dropout:
+                    IN = Dropout(dropout)(IN)
+                if bn:
+                    IN = BatchNormalization()(IN)
+        output_layers.append(IN)
+    if N_extrinsic:
+        EX_input = Input(shape=(N_extrinsic,), name='extrinsic_input')
+        inputs.append(EX_input)
+        for i in range(N_layers):
+            if i is 0:
+                EX = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='extrinsic_dense_{}'.format(i))(EX_input)
+            else:
+                EX = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='extrinsic_dense_{}'.format(i))(EX)
+                if dropout:
+                    EX = Dropout(dropout)(EX)
+                if bn:
+                    EX = BatchNormalization()(EX)
+        output_layers.append(EX)
+    # make model
+    if len(output_layers) > 1:
+        outputs = concatenate(output_layers, name='merge_intrinsic_extrinsic')
+    else:
+        outputs = output_layers[-1]
+    # add mixed layers:
+    for i in range(N_mixed_layers):
+        outputs = Dense(N_mixed_neurons[i], activation=activation, kernel_regularizer=reg, name='mixed_dense_{}'.format(i))(outputs)
+        if mixed_dropout:
+            outputs = Dropout(mixed_dropout)(outputs)
+        if bn:
+            outputs = BatchNormalization()(outputs)
+    # make final layer
+    output_layer = Dense(1, activation='linear', name='output_dense')(outputs)
+    model = Model(inputs=inputs, outputs=output_layer)
+    # print model
+    model.summary()
+    return model
 
 ############
 # Plotting #
@@ -397,8 +559,5 @@ def compare_runs_2d(results_path, outdir, data_path=None, fname='results.h5', mo
     plt.xticks(X[:, 0], rotation='45')
     plt.yticks(Y[0, :], rotation='45')
     fig.savefig(outdir + 'scatter_val_MaxSE.png'.format(key, metric))
-
-
-
 
 
