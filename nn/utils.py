@@ -123,7 +123,7 @@ def compare_to_posterior(x, posterior_values, model, N_intrinsic, N_extrinsic, w
     metrics["MeanSE"] = np.mean((posterior_values - pres) ** 2.)
     metrics["MaxSE"] = np.max((posterior_values - pres) ** 2.)
 
-    if additional_metrics not None:
+    if additional_metrics is not None:
         for name, f in additional_metrics.iteritems():
             metrics[name] = f(posterior_values, preds)
     if return_model:
@@ -369,6 +369,26 @@ def read_results(results_path, fname, blocks='all', concat=True):
 
     return d
 
+def get_weights(results_path, weights_fname='model.h5', blocks='all'):
+    """Return all the weights files for a run"""
+    run_blocks = filter(os.path.isdir, [results_path + i for i in os.listdir(results_path)])
+    if blocks is "all":
+        pass
+    elif blocks is "last":
+        run_blocks = [run_blocks[-1]]
+    else:
+        run_blocks = []
+        for b in run_blocks:
+            n = b.split("block")[-1]
+            if n in blocks:
+                run_blocks.append(b)
+    weights_files = []
+    for rb in run_blocks:
+        wf = rb + '/' + weights_fname
+        if os.path.isfile(wf):
+            weights_files.append(wf)
+    return weights_files
+
 def make_plots_multiple(results_path, outdir, fname='results.h5', blocks='all', plot_function=make_plots):
     """
     Search path for file results files with given name and make combined plots.
@@ -559,5 +579,3 @@ def compare_runs_2d(results_path, outdir, data_path=None, fname='results.h5', mo
     plt.xticks(X[:, 0], rotation='45')
     plt.yticks(Y[0, :], rotation='45')
     fig.savefig(outdir + 'scatter_val_MaxSE.png'.format(key, metric))
-
-
