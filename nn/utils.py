@@ -126,10 +126,11 @@ def compare_to_posterior(x, posterior_values, model, N_intrinsic, N_extrinsic, w
     if additional_metrics is not None:
         for name, f in additional_metrics.iteritems():
             metrics[name] = f(posterior_values, preds)
+    samples = {"samples": x, "posterior": posterior_values, "predictions": preds}
     if return_model:
-        return metrics, keras_model
+        return metrics, samples, keras_model
     else:
-        return metrics
+        return metrics, samples
 
 def network(N_intrinsic, N_extrinsic, params):
     """Get the model for neural network"""
@@ -495,7 +496,6 @@ def compare_runs(results_path, outdir, data_path=None, fname='results.h5', model
     plt.close(fig)
 
 
-
 def compare_runs_2d(results_path, outdir, data_path=None, fname='results.h5', model_name='auto_model.json', parameters=['neurons', 'layers'], block=3, metric='MSE', labels=None):
 
     if not os.path.isdir(outdir):
@@ -579,3 +579,36 @@ def compare_runs_2d(results_path, outdir, data_path=None, fname='results.h5', mo
     plt.xticks(X[:, 0], rotation='45')
     plt.yticks(Y[0, :], rotation='45')
     fig.savefig(outdir + 'scatter_val_MaxSE.png'.format(key, metric))
+
+def compare_runs_to_posterior_2d(posterior_samples, N_intrinsic, N_extrinsic, posterior_values, results_path, parameters=["neurons", "layers"], model_fname="model.json", weights_fname="model.h5"):
+    """Compare results from a search over 2 parameters to the true posterior"""
+    count = 0
+    run_path = results_path + "run{}/".format(count)
+    # load all runs
+    runs = {}
+    while os.path.isdir(run_path):
+        model = results_path + run_path + model_fname
+        run_params = get_model_from_json(model)
+        parameter_values = [run_params[p] for p in parameters]
+        weights_files = get_weights(run_path, weights_fname=weights_fname, blocks="last")
+        if len(weights):
+            samples = []
+            metrics = []
+            for wf in weights_files:
+                m, s = compare_to_posterior(posterior_samples, posterior_values, model, N_intrinsic, N_extrinsic, weights_file=wf)
+                metrics.append(m)
+                samples.append(s)
+            os.mkdir(outdir + "run{}/".format(count))
+            n_subpltos = np.ceil(np.sqrt(len(data[1])))
+            hist_fig, hist_axs = plt.subplots(N, N)
+            hist_axs = hist_axs.ravel()
+            # plot the comparison for each block
+            # figure should show changes as training progesses
+            for i, s in enumerate(samples):
+                axs[i].hist(s["predictions"], alpha=0.5, label="Predicted posteior")
+                axs[i].hist(s["posterior"], alpha=0.5, label="True posterior")
+            hist_fig(outdir + "/run{}/hist.png".format(count))
+
+            run_path = run_path.replace(str(count), str(count + 1))
+            runs["run{}".format(count)] = (run_parameters, samples, metrics)
+            count += 1
