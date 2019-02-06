@@ -2,6 +2,7 @@ import sys
 import numpy as np
 
 import utils
+import six
 from data import Data
 from function_approximator import FunctionApproximator
 
@@ -17,16 +18,12 @@ def main():
     model_path = get_model_path()
     params = utils.get_parameters_from_json(model_path)
     data = Data(params["datapath"])
+    # priors should be an array of the parametesr in expected order
     priors_in, priors_ex = data.split_parameters()
-    print(priors_ex.shape)
     n_extrinsic = np.shape(priors_ex)[-1]
     n_intrinsic = np.shape(priors_in)[-1]
-    if not n_intrinsic:
-        n_intrinsic = None
-    print(n_extrinsic, n_intrinsic)
     FA = FunctionApproximator(n_extrinsic, n_intrinsic, json_file=model_path, parameter_names=data.parameters)
     priors = np.concatenate([priors_ex, priors_in], axis=-1)
-    print(priors.shape)
     FA.setup_normalisation(priors)
     data.prep_data_chain(block_size=params["block size"], norm_logL=False, norm_intrinsic=False, norm_extrinsic=False)
     if params["blocks"] == "all":
@@ -43,9 +40,10 @@ def main():
                 x = x_ex
             elif x_in.any():
                 x = x_in
-            FA.train_on_data(x, y, accumulate=True, plot=True)
+            FA.train_on_data(x, y, accumulate=False, plot=False)
 
     FA.save_results()
+    FA.save_approximator("fa.pkl")
 
 if __name__ == "__main__":
     main()
