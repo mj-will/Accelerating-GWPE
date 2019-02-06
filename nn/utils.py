@@ -7,6 +7,7 @@ import json
 import numpy as np
 import h5py
 import deepdish
+import six
 
 import matplotlib
 matplotlib.use('Agg')
@@ -25,6 +26,8 @@ from keras import regularizers
 import tensorflow as tf
 
 from scipy.special import expit as sigmoid
+
+from function_approximator import FunctionApproximator
 
 ###########
 # General #
@@ -97,42 +100,6 @@ def get_predictions(x, model, N_intrinsic, N_extrinsic, weights_file=None):
 
     return model.predict(x), model
 
-def compare_to_posterior(x, posterior_values, model, N_intrinsic, N_extrinsic, weights_file=None, additional_metrics=None, return_model=False):
-    """Compare the output of the nn with the true posterior values
-
-    By default evaluates:
-    * KL divergence
-    * Mean squared error
-    * Max. squared error
-
-    Args:
-        x: Parameter values for posterior samples
-        posterior_values: Posterior samples
-        model: An instance of a keras model or a string pointing to a .json model
-        N_intrinsic: Number of intrinsic parameters
-        N_extrinsic: Number of extrinsic parameters
-        weights_file: Path to weights file
-        additional_metrics: List of additional metrics to use
-        return_model: Boolean, return the loaded keras model
-
-    Returns:
-        metrics: A dictionary of metrics
-        keras_model (optiional): The loaded keras model
-    """
-    preds, keras_model = get_predictions(x, model, N_intrinsic, N_extrinsic, weights_file=None)
-    metrics = {}
-    metrics["KL"] = np.sum(posterior_values * np.log(posterior_values / preds))
-    metrics["MeanSE"] = np.mean((posterior_values - pres) ** 2.)
-    metrics["MaxSE"] = np.max((posterior_values - pres) ** 2.)
-
-    if additional_metrics is not None:
-        for name, f in additional_metrics.iteritems():
-            metrics[name] = f(posterior_values, preds)
-    samples = {"samples": x, "posterior": posterior_values, "predictions": preds}
-    if return_model:
-        return metrics, samples, keras_model
-    else:
-        return metrics, samples
 
 def network(N_extrinsic, N_intrinsic, params):
     """Get the model for neural network"""
@@ -592,7 +559,7 @@ def compare_runs_to_posterior_2d(posterior_samples, N_intrinsic, N_extrinsic, po
         model = results_path + run_path + model_fname
         run_params = get_model_from_json(model)
         parameter_values = [run_params[p] for p in parameters]
-        weights_files = get_weights(run_path, weights_fname=weights_fname, blocks="last")
+        weights_files = get_weights(run_path, weights_fname=weights_fname, blocks="all")
         if len(weights):
             samples = []
             metrics = []
@@ -614,3 +581,54 @@ def compare_runs_to_posterior_2d(posterior_samples, N_intrinsic, N_extrinsic, po
             run_path = run_path.replace(str(count), str(count + 1))
             runs["run{}".format(count)] = (run_parameters, samples, metrics)
             count += 1
+
+def compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics=None):
+    """Compare the output of the nn with the true posterior values
+
+    By default evaluates:
+    * KL divergence
+    * Mean squared error
+    * Max. squared error
+
+    Args:
+        posteior_samples: Parameter values for posterior samples
+        posterior_values: Posterior samples
+        additional_metrics: List of additional metrics to use
+
+    Returns:
+        metrics: A dictionary of metrics
+    """
+    metrics = {}
+    metrics["KL"] = np.sum(posterior_values * np.log(posterior_values / preds))
+    metrics["MeanSE"] = np.mean((posterior_values - preds) ** 2.)
+    metrics["MaxSE"] = np.max((posterior_values - preds) ** 2.)
+
+    if additional_metrics is not None:
+        for name, f in additional_metrics.iteritems():
+            metrics[name] = f(posterior_values, preds)
+    return metrics
+
+def compare_run_to_posterior(run_path, outdir, sampling_results, fname="results.h5", model_name="model.json"):
+    if not os.path.isdir(outdir):
+        os.mkdir(outdir)
+    # format of posteior results determined by Bilby
+    posterior_results = deepdish.io.load(sampling_results)["posterior"]
+    posterior_samples = posterior_results[p].values
+    posterior_values = posterior_results["logL"].values + posterior_results["logPrior"].values
+    FA = FunctionApproximator(attr_dict=run_path + "fa.pkl")
+    weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks="all")
+    data = []
+    for wf in weights_files:
+        FA.load_weights("./outdir/iota_psi_dist_marg_phase/run7/block0/model_weights.h5")
+        preds = FA.predict(posterior_samples)
+        m = compare_to_posterior(posterior_samples, posterior_values, preds)
+        data.append((preds, m))
+
+    n_subplots = int(np.ceil(np.sqrt(len(weights_files))))
+    hist_fig = plt.figure()
+    for i, d in enumerate(data):
+        ax = hist_fig.add_subplot(n_subplots, n_subplots, i + 1)
+        ax.hist(d[0], alpha=0.5, label="Predicted posteior")
+        ax.hist(posterior_values, alpha=0.5, label="True posterior")
+    hist_fig.savefig(outdir + "hist.png")
+
