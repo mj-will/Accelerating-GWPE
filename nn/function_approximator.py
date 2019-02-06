@@ -93,7 +93,7 @@ class FunctionApproximator(object):
         """Return a dictionary of the parameters to be passed to model.fit"""
         return {"epochs": self.parameters["epochs"], "batch_size": self.parameters["batch_size"]}
 
-    def train_on_data(self, x, y, split=0.8, accumulate=False, plot=False, **kwargs):
+    def train_on_data(self, x, y, split=0.8, accumulate=False, plot=False):
         """
         Train on provided data
 
@@ -136,7 +136,7 @@ class FunctionApproximator(object):
         checkpoint = ModelCheckpoint(block_outdir + "model.h5", verbose=0, monitor="val_loss", save_best_only=True, mode="auto")
         callbacks.append(checkpoint)
         # more callbacks can be added by appending to callbacks
-        history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=2, callbacks=callbacks, **self._training_parameters, **kwargs)
+        history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=2, callbacks=callbacks, **self._training_parameters)
         training_y_pred = self.model.predict(self.x_train)
         self.model.load_weights(block_outdir + "model.h5")
         y_pred = self.model.predict(self.x_val).ravel()
