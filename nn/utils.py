@@ -15,8 +15,6 @@ from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
 plt.style.use('seaborn')
 
-import corner
-
 from scipy.stats import ks_2samp
 
 from keras.models import Sequential, Model
@@ -57,7 +55,11 @@ def make_run_dir(outdir):
 # Network #
 ###########
 
-def get_network_params_from_json(model_path, verbose=1):
+def KL(y_true, y_pred):
+    """Return kullback-Leibler divergence"""
+    return tf.reduce_sum(y_true * tf.log(y_true / y_pred))
+
+def get_parameters_from_json(model_path, verbose=1):
     """get the parameters for the nn from the model.json file"""
     if verbose:
         print('Loading model: ' + model_path)
@@ -132,7 +134,7 @@ def compare_to_posterior(x, posterior_values, model, N_intrinsic, N_extrinsic, w
     else:
         return metrics, samples
 
-def network(N_intrinsic, N_extrinsic, params):
+def network(N_extrinsic, N_intrinsic, params):
     """Get the model for neural network"""
     N_neurons = params['neurons']
     N_mixed_neurons = params['mixed neurons']
@@ -174,19 +176,6 @@ def network(N_intrinsic, N_extrinsic, params):
 
     inputs = []
     output_layers = []
-    if N_intrinsic:
-        IN_input = Input(shape=(N_intrinsic,), name='intrinsic_input')
-        inputs.append(IN_input)
-        for i in range(N_layers):
-            if i is 0:
-                IN = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN_input)
-            else:
-                IN = Dense(N_neurons[i], activation=activation,  kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN)
-                if dropout:
-                    IN = Dropout(dropout)(IN)
-                if bn:
-                    IN = BatchNormalization()(IN)
-        output_layers.append(IN)
     if N_extrinsic:
         EX_input = Input(shape=(N_extrinsic,), name='extrinsic_input')
         inputs.append(EX_input)
@@ -200,6 +189,19 @@ def network(N_intrinsic, N_extrinsic, params):
                 if bn:
                     EX = BatchNormalization()(EX)
         output_layers.append(EX)
+    if N_intrinsic:
+        IN_input = Input(shape=(N_intrinsic,), name='intrinsic_input')
+        inputs.append(IN_input)
+        for i in range(N_layers):
+            if i is 0:
+                IN = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN_input)
+            else:
+                IN = Dense(N_neurons[i], activation=activation,  kernel_regularizer=reg, name='intrinsic_dense_{}'.format(i))(IN)
+                if dropout:
+                    IN = Dropout(dropout)(IN)
+                if bn:
+                    IN = BatchNormalization()(IN)
+        output_layers.append(IN)
     # make model
     if len(output_layers) > 1:
         outputs = concatenate(output_layers, name='merge_intrinsic_extrinsic')
@@ -247,7 +249,7 @@ def make_plots(outdir, x=None, y_true=None, y_pred=None, y_train_true=None, y_tr
         loss = history.history['loss']
         val_loss = history.history['val_loss']
         KL = history.history['KL']
-        val_KL = history.history['val_KL']
+        val_KL = history.history['KL']
     if not check_any_none([loss, val_loss]):
         print('Making metric plots...')
         # loss
