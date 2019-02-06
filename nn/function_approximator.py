@@ -12,26 +12,38 @@ import utils
 
 class FunctionApproximator(object):
 
-    def __init__(self, n_extrinsic, n_intrinsic, parameter_names=None, json_file=None):
-        self.n_extrinsic = n_extrinsic
-        self.n_intrinsic = n_intrinsic
-        self.compiled = False
-        self.model = None
-        self._count = 0
-        self.normalise = False
-        if parameter_names is None:
-            self.parameter_names = ["parameter_" + str(i) for i in range(n_extrinsic + n_intrinsic)]
-        else:
-            self.parameter_names = parameter_names
-        if json_file is not None:
+    def __init__(self, n_extrinsic=None, n_intrinsic=None, parameter_names=None, json_file=None, attr_dict=None):
+        if json_file is not None and attr_dict is not None:
+            raise ValueError("Provided both json file and attribute dict, use one or other")
+        elif json_file is not None:
+            self.n_extrinsic = n_extrinsic
+            self.n_intrinsic = n_intrinsic
+            self.compiled = False
+            self.model = None
+            self._count = 0
+            self.normalise = False
+            if parameter_names is None:
+                self.parameter_names = ["parameter_" + str(i) for i in range(n_extrinsic + n_intrinsic)]
+            else:
+                self.parameter_names = parameter_names
             self.setup_from_json(json_file)
+        elif attr_dict is not None:
+            self.setup_from_attr_dict(attr_dict)
         else:
-            raise ValueError("No json file for setup")
+            raise ValueError("No json file or saved FA file for setup")
 
     def __str__(self):
         args = "".join("{}: {}\n".format(key, value) for key, value in six.iteritems(self.parameters))
-        #print(args)
         return "FunctionApproximator instance\n" + "".join("    {}: {}\n".format(key, value) for key, value in six.iteritems(self.parameters))
+
+    def setup_from_attr_dict(self, attr_dcit):
+        """Set up the approximator from a dictionary of attributes"""
+        with open(attr_dict, "rb") as f:
+            d = six.moves.cPickle.load(f)
+        for key, value in six.iteritems(d):
+            setattr(self, key, value)
+        self.model = utils.network(self.n_extrinsic, self.n_intrinsic, self.parameters)
+        self._compile_network()
 
     def setup_from_json(self, json_file):
         """Set up the class before training from a json file"""
@@ -93,6 +105,14 @@ class FunctionApproximator(object):
         """Return a dictionary of the parameters to be passed to model.fit"""
         return {"epochs": self.parameters["epochs"], "batch_size": self.parameters["batch_size"]}
 
+    def _split_data(self, x):
+        """Split data according to number of extrinsic and intrinsic parameters"""
+        if self.n_extrinsic and self.n_intrinsic:
+            x_split = [x[:, :self.n_extrinsic], x[:, -self.n_intrinsic:]]
+        else:
+            x_split = x
+        return x_split
+
     def train_on_data(self, x, y, split=0.8, accumulate=False, plot=False):
         """
         Train on provided data
@@ -119,12 +139,8 @@ class FunctionApproximator(object):
         n = len(y)
         x_train, x_val = np.array_split(x, [int(split * n)], axis=0)
         self.y_train, self.y_val = np.array_split(y, [int(split * n)], axis=0)
-        if self.n_extrinsic and self.n_intrinsic:
-            self.x_train = [x_train[:, :self.n_extrinsic], x_train[:, -self.n_intrinsic:]]
-            self.x_val = [x_val[:, :self.n_extrinsic], x_val[:, -self.n_intrinsic:]]
-        else:
-            self.x_train = x_train
-            self.x_val = x_val
+        self.x_train = self._split_data(x_train)
+        self.x_val = self._split_data(x_val)
         if accumulate:
             # save data before extrinsic/intrinsic split
             self._accumulated_data = (x_val, self.y_val)
@@ -133,12 +149,13 @@ class FunctionApproximator(object):
         if self.parameters["patience"]:
             callbacks.append(EarlyStopping(monitor="val_loss", patience=self.parameters["patience"]))
         # save best model during traing
-        checkpoint = ModelCheckpoint(block_outdir + "model.h5", verbose=0, monitor="val_loss", save_best_only=True, mode="auto")
+        self.weights_file = block_outdir + "model_weights.h5"
+        checkpoint = ModelCheckpoint(self.weights_file, verbose=0, monitor="val_loss", save_best_only=True, mode="auto")
         callbacks.append(checkpoint)
         # more callbacks can be added by appending to callbacks
         history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=2, callbacks=callbacks, **self._training_parameters)
         training_y_pred = self.model.predict(self.x_train)
-        self.model.load_weights(block_outdir + "model.h5")
+        self.model.load_weights(self.weights_file)
         y_pred = self.model.predict(self.x_val).ravel()
         if plot:
             utils.make_plots(block_outdir, x=x_val, y_true=self.y_val, y_pred=y_pred, y_train_true=self.y_train, y_train_pred=training_y_pred, history=history, parameters=self.parameter_names)
@@ -147,10 +164,22 @@ class FunctionApproximator(object):
                         "y_train": self.y_train,
                         "y_val": self.y_val,
                         "training_preds": training_y_pred,
-                        "y_pred": y_pred}
+                        "y_pred": y_pred,
+                        "parameters": self.parameter_names}
         results_dict.update(history.history)
         self.data_all["block{}".format(self._count)] = results_dict
         self._count += 1
+
+    def load_weights(self, weights_file):
+        """Load weights for the model"""
+        self.model.load_weights(weights_file)
+
+    def predict(self, x):
+        """Get predictions for a given set of points in parameter space that have not been normalised"""
+        x = self._normalise_input_data(x)
+        x = self._split_data(x)
+        y = self.model.predict(x).ravel()
+        return y
 
     def _make_run_dir(self):
         """Check run count and make outdir"""
@@ -161,6 +190,7 @@ class FunctionApproximator(object):
         run_path = self.outdir + 'run{}/'.format(run)
         if not os.path.exists(run_path):
             os.mkdir(run_path)
+        self._run_path = run_path
         return run_path
 
     def save_results(self, save=False):
@@ -180,3 +210,11 @@ class FunctionApproximator(object):
                     print(e)
         else:
             print("JSON file parameters specified not to save data, skipping. To force saving enable it in this function (not recommeneded)")
+
+    def save_approximator(self, fname="fa.pkl"):
+        """Save the attributes of the function approximator"""
+        print("Saving approximator as a dictionary of attributes")
+        attr_dict = vars(self)
+        attr_dict.pop("model")
+        with open(self._run_path + fname, "wb") as f:
+            six.moves.cPickle.dump(attr_dict, f, protocol=six.moves.cPickle.HIGHEST_PROTOCOL)
