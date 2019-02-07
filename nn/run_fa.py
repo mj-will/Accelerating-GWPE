@@ -40,7 +40,7 @@ def main():
                 x = x_ex
             elif x_in.any():
                 x = x_in
-            FA.train_on_data(x, y, accumulate=False, plot=False)
+            FA.train_on_data(x, y, accumulate=params["accumulate"], plot=True)
 
     FA.save_results()
     FA.save_approximator("fa.pkl")
