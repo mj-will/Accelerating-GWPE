@@ -47,7 +47,7 @@ class FunctionApproximator(object):
         args = "".join("{}: {}\n".format(key, value) for key, value in six.iteritems(self.parameters))
         return "FunctionApproximator instance\n" + "".join("    {}: {}\n".format(key, value) for key, value in six.iteritems(self.parameters))
 
-    def setup_from_attr_dict(self, attr_dcit):
+    def setup_from_attr_dict(self, attr_dict):
         """Set up the approximator from a dictionary of attributes"""
         with open(attr_dict, "rb") as f:
             d = six.moves.cPickle.load(f)
@@ -142,7 +142,6 @@ class FunctionApproximator(object):
             x = self._normalise_input_data(x)
         # accumlate data if flag true and not the first instance of training
         if accumulate and self._count:
-            #raise NotImplementedError("Accumulate not implemented yet")
             x = np.concatenate([self._accumulated_data[0], x], axis=0)
             y = np.concatenate([self._accumulated_data[1], y], axis=0)
 
@@ -152,9 +151,17 @@ class FunctionApproximator(object):
         self.y_train, self.y_val = np.array_split(y, [int(split * n)], axis=0)
         self.x_train = self._split_data(x_train)
         self.x_val = self._split_data(x_val)
-        if accumulate:
-            # save data before extrinsic/intrinsic split
-            self._accumulated_data = (x_val, self.y_val)
+        if accumulate is not False:
+            if accumulate == "val":
+                self._accumulated_data = (x_val, self.y_val)
+            elif accumulate == "train":
+                self._accumulated_data = (x_train, self.y_train)
+            elif accumulate == "all":
+                acc_x = np.concatenate([x_train, x_val], axis=0)
+                acc_y = np.concatenate([self.y_train, self.y_val], axis=0)
+                self._accumulated_data = (acc_x, acc_y)
+            else:
+                raise ValueError("Unknown data type to accumulate: {}. Choose from: 'val', 'train' or 'all'".format(accumulate))
 
         callbacks = []
         if self.parameters["patience"]:
@@ -165,19 +172,19 @@ class FunctionApproximator(object):
         callbacks.append(checkpoint)
         # more callbacks can be added by appending to callbacks
         history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=2, callbacks=callbacks, **self._training_parameters)
-        training_y_pred = self.model.predict(self.x_train)
+        y_train_pred = self.model.predict(self.x_train)
         self.model.load_weights(self.weights_file)
         y_pred = self.model.predict(self.x_val).ravel()
-        if plot:
-            utils.make_plots(block_outdir, x=x_val, y_true=self.y_val, y_pred=y_pred, y_train_true=self.y_train, y_train_pred=training_y_pred, history=history, parameters=self.parameter_names)
         results_dict = {"x_train": self.x_train,
                         "x_val": self.x_val,
                         "y_train": self.y_train,
                         "y_val": self.y_val,
-                        "training_preds": training_y_pred,
+                        "y_train_pred": y_train_pred,
                         "y_pred": y_pred,
                         "parameters": self.parameter_names}
         results_dict.update(history.history)
+        if plot:
+            utils.make_plots(block_outdir, **results_dict)
         self.data_all["block{}".format(self._count)] = results_dict
         self._count += 1
 
