@@ -16,7 +16,7 @@ def get_model_path():
 
 def main():
     model_path = get_model_path()
-    params = utils.get_parameters_from_json(model_path)
+    params = utils.network.get_parameters_from_json(model_path)
     data = Data(params["datapath"])
     # priors should be an array of the parametesr in expected order
     priors_in, priors_ex = data.split_parameters()

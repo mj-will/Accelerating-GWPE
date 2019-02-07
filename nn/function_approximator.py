@@ -53,19 +53,19 @@ class FunctionApproximator(object):
             d = six.moves.cPickle.load(f)
         for key, value in six.iteritems(d):
             setattr(self, key, value)
-        self.model = utils.network(self.n_extrinsic, self.n_intrinsic, self.parameters)
+        self.model = utils.network.network(self.n_extrinsic, self.n_intrinsic, self.parameters)
         self._compile_network()
 
     def setup_from_json(self, json_file):
         """Set up the class before training from a json file"""
         if self.model is None:
             print("Setting up function approximator")
-            self.parameters = utils.get_parameters_from_json(json_file)
+            self.parameters = utils.network.get_parameters_from_json(json_file)
             self.outdir = self.parameters["outdir"]
             self._setup_directories()
             shutil.copy(json_file, self.tmp_outdir)
             # setup network
-            self.model = utils.network(self.n_extrinsic, self.n_intrinsic, self.parameters)
+            self.model = utils.network.network(self.n_extrinsic, self.n_intrinsic, self.parameters)
             self._compile_network()
             self.data_all = {}
         else:
@@ -86,10 +86,10 @@ class FunctionApproximator(object):
         """Setup the loss function and compile the model"""
         if self.parameters["loss"] == "KL":
             print("KL divergence")
-            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=utils.KL, metrics=["mse"])
+            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=utils.network.KL, metrics=["mse"])
         else:
             print("Using " + self.parameters["loss"])
-            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=self.parameters["loss"], metrics=[utils.KL])
+            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=self.parameters["loss"], metrics=[utils.network.KL])
 
         self.compiled = True
 
@@ -184,7 +184,7 @@ class FunctionApproximator(object):
                         "parameters": self.parameter_names}
         results_dict.update(history.history)
         if plot:
-            utils.make_plots(block_outdir, **results_dict)
+            utils.plotting.make_plots(block_outdir, **results_dict)
         self.data_all["block{}".format(self._count)] = results_dict
         self._count += 1
 
