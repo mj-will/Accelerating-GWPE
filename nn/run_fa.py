@@ -1,10 +1,10 @@
 import sys
 import numpy as np
 
-import utils
 import six
-from data import Data
-from function_approximator import FunctionApproximator
+from gwfa.data import Data
+from gwfa.function_approximator import FunctionApproximator
+from gwfa import utils
 
 
 def get_model_path():
