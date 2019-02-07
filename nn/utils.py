@@ -300,7 +300,7 @@ def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_trai
         for i in range(N_params):
             for j in range(N_params):
                 ax = axes[i, j]
-                if j <= i:
+                if j < i:
                     idx = [j, i]
                     sp = x_val[:, idx].T
                     sc = ax.scatter(*sp, c=error, vmin=-max_error, vmax=max_error, marker='.', cmap=plt.cm.RdBu_r)
@@ -310,6 +310,9 @@ def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_trai
                             ax.set_xlabel(parameters[j])
                         if j == 0:
                             ax.set_ylabel(parameters[i])
+                elif j == i:
+                    h = x_val[:, j].T
+                    ax.hist(h, density=True, alpha=0.5)
                 else:
                     ax.set_axis_off()
         cbar = fig.colorbar(sc, ax=axes.ravel().tolist(), shrink=0.5)
@@ -317,18 +320,18 @@ def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_trai
         fig.savefig(outdir + 'scatter.png', dpi=400, bbox_inches='tight')
         plt.close(fig)
 
-def read_results(results_path, fname, blocks='all', concat=True, dd=False):
+def read_results(results_path, fname, blocks="all", concat=True, dd=False):
     """Read results saved in blocks"""
     if dd:
         hf = deepdish.io.load(results_path + fname)
     else:
-        hf = h5py.File(results_path + fname, 'r')
+        hf = h5py.File(results_path + fname, "r")
     # need data in order is was added
     d = OrderedDict()
-    if blocks == 'all':
-        blocks = ['block{}'.format(b) for b in range(1, len(hf.keys()) + 1)]
+    if blocks == "all":
+        blocks = ["block{}".format(b) for b in range(1, len(hf.keys()) + 1)]
     else:
-        blocks = ['block{}'.format(b) for b in blocks]
+        blocks = ["block{}".format(b) for b in blocks]
     # blocks must be in order for loss plots
     block_keys = sorted(hf.keys(), key=lambda s: int(s.split("block")[-1]))
     for block_key in block_keys:
@@ -341,7 +344,7 @@ def read_results(results_path, fname, blocks='all', concat=True, dd=False):
     # concatenate all the blocks together
     if concat:
         for key, value in d.iteritems():
-            if key is 'parameters':
+            if key is "parameters":
                 d[key] = value[0]
             else:
                 d[key] = np.concatenate(value, axis=0)
@@ -384,7 +387,7 @@ def make_plots_multiple(results_path, outdir, fname='results.h5', blocks='all', 
     """
     # get dictionary of results
     d = read_results(results_path, fname, blocks, concat=True, **kwargs)
-    plot_function(outdir, scatter=False, **d)
+    plot_function(outdir, scatter=True, **d)
 
 
 def compare_runs(results_path, outdir, data_path=None, fname='results.h5', model_name='auto_model.json', parameter='neurons'):
