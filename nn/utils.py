@@ -8,6 +8,8 @@ import numpy as np
 import h5py
 import deepdish
 import six
+import re
+from collections import OrderedDict
 
 import matplotlib
 matplotlib.use('Agg')
@@ -199,12 +201,14 @@ def check_any_none(l):
     """Check if any of the arrays are none"""
     return not all([np.any(a) for a in l])
 
-def make_plots(outdir, x=None, y_true=None, y_pred=None, y_train_true=None, y_train_pred=None, history=None, parameters=None, loss=None, val_loss=None, KL=None, val_KL=None, scatter=True):
+def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_train_pred=None, history=None, parameters=None, loss=None, val_loss=None, KL=None, val_KL=None, scatter=True, **kwargs):
     """
     Make plots from outputs of neural network training for a block of data
+
+    NOTE: arguments correspond to keys of each block in the results file
     """
 
-    if check_all_none([x, y_true, y_pred, y_train_true, y_train_pred, history, loss, val_loss, KL, val_KL]):
+    if check_all_none([x_val, y_val, y_pred, y_train, y_train_pred, history, loss, val_loss, KL, val_KL]):
         raise ValueError('Not inputs to plot!')
 
     if not os.path.isdir(outdir):
@@ -244,53 +248,53 @@ def make_plots(outdir, x=None, y_true=None, y_pred=None, y_train_true=None, y_tr
         plt.legend()
         fig.savefig(outdir + 'KL.png')
         plt.close(fig)
-    if not check_any_none([y_true, y_pred]):
+    if not check_any_none([y_val, y_pred]):
         print('Making prediction plots...')
         # predictions on validation data
         fig = plt.figure()
-        plt.plot(y_true, y_pred, '.')
-        plt.plot([y_true.min(), y_true.max()], [y_true.min(), y_true.max()])
-        plt.plot([y_true.min(), y_true.max()], [y_true.mean(), y_true.mean()])
+        plt.plot(y_val, y_pred, '.')
+        plt.plot([y_val.min(), y_val.max()], [y_val.min(), y_val.max()])
+        #plt.plot([y_val.min(), y_val.max()], [y_val.mean(), y_val.mean()])
         plt.xlabel('Target')
         plt.ylabel('Predicted')
         fig.savefig(outdir + 'preds.png')
         plt.close(fig)
-    if not check_any_none([y_train_true, y_train_pred]):
+    if not check_any_none([y_train, y_train_pred]):
         print('Making prediction plots for training...')
         # predictions for training data
         fig = plt.figure()
-        plt.plot(y_train_true, y_train_pred, '.')
-        plt.plot([y_train_true.min(), y_train_true.max()], [y_train_true.min(), y_train_true.max()])
-        plt.plot([y_train_true.min(), y_train_true.max()], [y_train_true.mean(), y_train_true.mean()])
+        plt.plot(y_train, y_train_pred, '.')
+        plt.plot([y_train.min(), y_train.max()], [y_train.min(), y_train.max()])
+        #plt.plot([y_train.min(), y_train.max()], [y_train.mean(), y_train.mean()])
         plt.xlabel('Target')
         plt.ylabel('Predicted')
         fig.savefig(outdir + 'training_preds.png')
         plt.close(fig)
-    if not check_any_none([y_train_true, y_true]):
+    if not check_any_none([y_train, y_val]):
         print('Making distribution plots...')
         # histogram of data
         fig = plt.figure()
-        plt.hist(y_train_true, alpha=0.5, label='train')
-        plt.hist(y_true, alpha=0.5, label='val')
+        plt.hist(y_train, alpha=0.5, label='train', density=True)
+        plt.hist(y_val, alpha=0.5, label='val', density=True)
         plt.legend()
         plt.title('True logL')
         fig.savefig(outdir + 'data_logL_dist.png')
         plt.close(fig)
-    if not check_any_none([y_true, y_pred]):
+    if not check_any_none([y_val, y_pred]):
         print('Making output plots...')
         # histogram of outputs
         fig = plt.figure()
-        plt.hist(y_true, alpha=0.5, normed=True, label='true')
-        plt.hist(y_pred, alpha=0.5, normed=True, label='predicted')
+        plt.hist(y_val, alpha=0.5, density=True, label='true')
+        plt.hist(y_pred, alpha=0.5, density=True, label='predicted')
         plt.legend()
         plt.title('Output distribution')
         fig.savefig(outdir + 'output_dist.png')
         plt.close(fig)
-    if not check_any_none([x, y_true, y_pred]) and scatter:
+    if not check_any_none([x_val, y_val, y_pred]) and scatter:
         print('Making scatter plot...')
         # scatter of error on logL
-        N_params = np.shape(x)[-1]
-        error = (y_true - y_pred)
+        N_params = np.shape(x_val)[-1]
+        error = (y_val - y_pred)
         max_error = np.max(np.abs(error))
         fig, axes = plt.subplots(N_params, N_params, figsize=[18, 15])
         for i in range(N_params):
@@ -298,7 +302,7 @@ def make_plots(outdir, x=None, y_true=None, y_pred=None, y_train_true=None, y_tr
                 ax = axes[i, j]
                 if j <= i:
                     idx = [j, i]
-                    sp = x[:, idx].T
+                    sp = x_val[:, idx].T
                     sc = ax.scatter(*sp, c=error, vmin=-max_error, vmax=max_error, marker='.', cmap=plt.cm.RdBu_r)
                     # add labels if possible
                     if parameters is not None:
@@ -313,16 +317,21 @@ def make_plots(outdir, x=None, y_true=None, y_pred=None, y_train_true=None, y_tr
         fig.savefig(outdir + 'scatter.png', dpi=400, bbox_inches='tight')
         plt.close(fig)
 
-def read_results(results_path, fname, blocks='all', concat=True):
+def read_results(results_path, fname, blocks='all', concat=True, dd=False):
     """Read results saved in blocks"""
-    hf = h5py.File(results_path + fname, 'r')
-    d = {}
+    if dd:
+        hf = deepdish.io.load(results_path + fname)
+    else:
+        hf = h5py.File(results_path + fname, 'r')
+    # need data in order is was added
+    d = OrderedDict()
     if blocks == 'all':
         blocks = ['block{}'.format(b) for b in range(1, len(hf.keys()) + 1)]
     else:
         blocks = ['block{}'.format(b) for b in blocks]
-    # load all the blocks into a dictionary
-    for block_key in hf.keys():
+    # blocks must be in order for loss plots
+    block_keys = sorted(hf.keys(), key=lambda s: int(s.split("block")[-1]))
+    for block_key in block_keys:
         if block_key in blocks:
             for key in hf[block_key].keys():
                 if key not in d.keys():
@@ -339,9 +348,19 @@ def read_results(results_path, fname, blocks='all', concat=True):
 
     return d
 
-def get_weights(results_path, weights_fname='model.h5', blocks='all'):
-    """Return all the weights files for a run"""
-    run_blocks = filter(os.path.isdir, [results_path + i for i in os.listdir(results_path)])
+def get_weights(results_path, weights_fname="model_weights.h5", blocks="all"):
+    """
+    Return all the weights files for a run
+
+    Args:
+        results_path: Path to the directory with the weights file
+        weights_fname: Weights file name
+        blocks: Blocks to return weights for. Defaults to all and can be a list of intergers, 'all' or 'last'
+    Returns:
+        weights_files: List of paths to weights files
+    """
+    run_blocks_unsrt = filter(os.path.isdir, [results_path + i for i in os.listdir(results_path)])
+    run_blocks = sorted(run_blocks_unsrt, key=lambda s: int(s.split("block")[-1]))
     if blocks is "all":
         pass
     elif blocks is "last":
@@ -354,18 +373,18 @@ def get_weights(results_path, weights_fname='model.h5', blocks='all'):
                 run_blocks.append(b)
     weights_files = []
     for rb in run_blocks:
-        wf = rb + '/' + weights_fname
+        wf = rb + "/" + weights_fname
         if os.path.isfile(wf):
             weights_files.append(wf)
     return weights_files
 
-def make_plots_multiple(results_path, outdir, fname='results.h5', blocks='all', plot_function=make_plots):
+def make_plots_multiple(results_path, outdir, fname='results.h5', blocks='all', plot_function=make_plots, **kwargs):
     """
-    Search path for file results files with given name and make combined plots.
+    Search path for results files with given name and make combined plots.
     """
     # get dictionary of results
-    d = read_results(result_path, fname, blocks, concat=True)
-    plot_function(outdir, **d)
+    d = read_results(results_path, fname, blocks, concat=True, **kwargs)
+    plot_function(outdir, scatter=False, **d)
 
 
 def compare_runs(results_path, outdir, data_path=None, fname='results.h5', model_name='auto_model.json', parameter='neurons'):
@@ -439,7 +458,6 @@ def compare_runs(results_path, outdir, data_path=None, fname='results.h5', model
         posterior_samples = output['posterior'].drop(['logL', 'logPrior'], axis=1).values
         logL_samples = output['posterior']['logL']
         parameter_labels = output['parameter_labels'][:]
-        print(posterior_samples.shape)
         fig = corner.corner(posterior_samples, labels=parameter_labels)
         fig.savefig(outdir + 'corner.png')
 
@@ -466,6 +484,7 @@ def compare_runs(results_path, outdir, data_path=None, fname='results.h5', model
 
 
 def compare_runs_2d(results_path, outdir, data_path=None, fname='results.h5', model_name='auto_model.json', parameters=['neurons', 'layers'], block=3, metric='MSE', labels=None):
+    """Compare the results from a directory full of runs using models that vary over two parameters"""
 
     if not os.path.isdir(outdir):
         os.mkdir(outdir)
@@ -549,41 +568,9 @@ def compare_runs_2d(results_path, outdir, data_path=None, fname='results.h5', mo
     plt.yticks(Y[0, :], rotation='45')
     fig.savefig(outdir + 'scatter_val_MaxSE.png'.format(key, metric))
 
-def compare_runs_to_posterior_2d(posterior_samples, N_intrinsic, N_extrinsic, posterior_values, results_path, parameters=["neurons", "layers"], model_fname="model.json", weights_fname="model.h5"):
-    """Compare results from a search over 2 parameters to the true posterior"""
-    count = 0
-    run_path = results_path + "run{}/".format(count)
-    # load all runs
-    runs = {}
-    while os.path.isdir(run_path):
-        model = results_path + run_path + model_fname
-        run_params = get_model_from_json(model)
-        parameter_values = [run_params[p] for p in parameters]
-        weights_files = get_weights(run_path, weights_fname=weights_fname, blocks="all")
-        if len(weights):
-            samples = []
-            metrics = []
-            for wf in weights_files:
-                m, s = compare_to_posterior(posterior_samples, posterior_values, model, N_intrinsic, N_extrinsic, weights_file=wf)
-                metrics.append(m)
-                samples.append(s)
-            os.mkdir(outdir + "run{}/".format(count))
-            n_subpltos = np.ceil(np.sqrt(len(data[1])))
-            hist_fig, hist_axs = plt.subplots(N, N)
-            hist_axs = hist_axs.ravel()
-            # plot the comparison for each block
-            # figure should show changes as training progesses
-            for i, s in enumerate(samples):
-                axs[i].hist(s["predictions"], alpha=0.5, label="Predicted posteior")
-                axs[i].hist(s["posterior"], alpha=0.5, label="True posterior")
-            hist_fig(outdir + "/run{}/hist.png".format(count))
-
-            run_path = run_path.replace(str(count), str(count + 1))
-            runs["run{}".format(count)] = (run_parameters, samples, metrics)
-            count += 1
-
 def compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics=None):
-    """Compare the output of the nn with the true posterior values
+    """
+    Compare the output of the nn with the true posterior values
 
     By default evaluates:
     * KL divergence
@@ -608,27 +595,65 @@ def compare_to_posterior(posterior_samples, posterior_values, preds, additional_
             metrics[name] = f(posterior_values, preds)
     return metrics
 
-def compare_run_to_posterior(run_path, outdir, sampling_results, fname="results.h5", model_name="model.json"):
+def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="results.h5", plots=True, additional_metrics=None):
+    """
+    Load a weights for model and compare the predicted values to the true posterior
+
+    See compare_to_posterior for metrics that are evaluated by default
+
+    Args:
+        run_path: Path to the run
+        sampling_results: path to results from bilby sampling
+        outdir: output directory, if None defaults to run_path
+        fname: name of results file in run directory
+        plots: enable or disable plots
+        additional_metrics: dict of additional metrics that take y_true and y_pred and return a single value
+    Returns:
+        data: list of tuples containing the predicted values and metrics dict
+
+    """
+    if outdir is None:
+        outdir = run_path
     if not os.path.isdir(outdir):
         os.mkdir(outdir)
     # format of posteior results determined by Bilby
     posterior_results = deepdish.io.load(sampling_results)["posterior"]
+    p = ["psi", "luminosity_distance", "iota"]
     posterior_samples = posterior_results[p].values
-    posterior_values = posterior_results["logL"].values + posterior_results["logPrior"].values
+    posterior_values = posterior_results["logL"].values# + posterior_results["logPrior"].values
     FA = FunctionApproximator(attr_dict=run_path + "fa.pkl")
     weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks="all")
     data = []
-    for wf in weights_files:
-        FA.load_weights("./outdir/iota_psi_dist_marg_phase/run7/block0/model_weights.h5")
+    for c, wf in enumerate(weights_files):
+        print("Loading weights from: " +  wf)
+        FA.load_weights(wf)
         preds = FA.predict(posterior_samples)
-        m = compare_to_posterior(posterior_samples, posterior_values, preds)
+        m = compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics)
         data.append((preds, m))
 
-    n_subplots = int(np.ceil(np.sqrt(len(weights_files))))
-    hist_fig = plt.figure()
-    for i, d in enumerate(data):
-        ax = hist_fig.add_subplot(n_subplots, n_subplots, i + 1)
-        ax.hist(d[0], alpha=0.5, label="Predicted posteior")
-        ax.hist(posterior_values, alpha=0.5, label="True posterior")
-    hist_fig.savefig(outdir + "hist.png")
+    if plots:
+        print("Making plots")
+        n_subplots = int(np.ceil(np.sqrt(len(weights_files))))
+        hist_fig = plt.figure(figsize=(12, 10))
+        meanSE = np.empty(c + 1)
+        for i, d in enumerate(data):
+            meanSE[i] = d[1]["MeanSE"]
+            ax = hist_fig.add_subplot(n_subplots, n_subplots, i + 1)
+            ax.hist(d[0], alpha=0.5, label="Predicted posteior", density=True)
+            ax.hist(posterior_values, alpha=0.5, label="True posterior", density=True)
+            ax.set_title("Block " + str(i))
+            ax.set_xlabel("logL")
+            ax.legend(["Predicted", "True"])
+        hist_fig.tight_layout()
+        hist_fig.savefig(outdir + "hist.png")
+        plt.close(hist_fig)
 
+        metrics_fig = plt.figure(figsize=(12, 10))
+        plt.plot(meanSE, 'o')
+        plt.yscale("log")
+        plt.xlabel("Block")
+        plt.ylabel("meanSE")
+        metrics_fig.savefig(outdir + "meanSE.png")
+        plt.close(metrics_fig)
+
+    return data
