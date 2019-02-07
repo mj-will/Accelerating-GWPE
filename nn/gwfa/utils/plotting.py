@@ -15,7 +15,7 @@ from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
 plt.style.use("seaborn")
 
-from function_approximator import FunctionApproximator
+
 
 def check_all_none(l):
     """Check all any of the arrays are none"""
@@ -418,6 +418,7 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         data: list of tuples containing the predicted values and metrics dict
 
     """
+    from ..function_approximator import FunctionApproximator
     if outdir is None:
         outdir = run_path
     if not os.path.isdir(outdir):
