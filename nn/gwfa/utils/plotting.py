@@ -15,7 +15,7 @@ from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
 plt.style.use("seaborn")
 
-
+from gwfa.utils import metrics
 
 def check_all_none(l):
     """Check all any of the arrays are none"""
@@ -115,34 +115,43 @@ def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_trai
         fig.savefig(outdir + "output_dist.png")
         plt.close(fig)
     if not check_any_none([x_val, y_val, y_pred]) and scatter:
-        print("Making scatter plot...")
         # scatter of error on logL
-        N_params = np.shape(x_val)[-1]
-        error = (y_val - y_pred)
-        max_error = np.max(np.abs(error))
-        fig, axes = plt.subplots(N_params, N_params, figsize=[18, 15])
-        for i in range(N_params):
-            for j in range(N_params):
-                ax = axes[i, j]
-                if j < i:
-                    idx = [j, i]
-                    sp = x_val[:, idx].T
-                    sc = ax.scatter(*sp, c=error, vmin=-max_error, vmax=max_error, marker=".", cmap=plt.cm.RdBu_r)
-                    # add labels if possible
-                    if parameters is not None:
-                        if (i + 1) == N_params:
-                            ax.set_xlabel(parameters[j])
-                        if j == 0:
-                            ax.set_ylabel(parameters[i])
-                elif j == i:
-                    h = x_val[:, j].T
-                    ax.hist(h, density=True, alpha=0.5)
-                else:
-                    ax.set_axis_off()
-        cbar = fig.colorbar(sc, ax=axes.ravel().tolist(), shrink=0.5)
-        cbar.set_label("Error logL", rotation=270)
-        fig.savefig(outdir + "scatter.png", dpi=400, bbox_inches="tight")
-        plt.close(fig)
+        make_scatter(x_val, y_val, y_pred, outdir=outdir, parameters=parameters)
+
+def make_scatter(x, y_true, y_pred, outdir='', parameters=None, fname="scatter.png"):
+    """
+    Make a set of scatter plots for each pair of parameters
+    """
+    if not os.path.isdir(outdir):
+        raise ValueError("Output directory does not exist")
+    print("Making scatter plot...")
+    # scatter of error on logL
+    N_params = np.shape(x)[-1]
+    error = (y_true - y_pred)
+    max_error = np.max(np.abs(error))
+    fig, axes = plt.subplots(N_params, N_params, figsize=[18, 15])
+    for i in range(N_params):
+        for j in range(N_params):
+            ax = axes[i, j]
+            if j < i:
+                idx = [j, i]
+                sp = x[:, idx].T
+                sc = ax.scatter(*sp, c=error, vmin=-max_error, vmax=max_error, marker=".", cmap=plt.cm.RdBu_r)
+                # add labels if possible
+                if parameters is not None:
+                    if (i + 1) == N_params:
+                        ax.set_xlabel(parameters[j])
+                    if j == 0:
+                        ax.set_ylabel(parameters[i])
+            elif j == i:
+                h = x[:, j].T
+                ax.hist(h, density=True, alpha=0.5)
+            else:
+                ax.set_axis_off()
+    cbar = fig.colorbar(sc, ax=axes.ravel().tolist(), shrink=0.5)
+    cbar.set_label("Error logL", rotation=270)
+    fig.savefig(outdir + fname, dpi=400, bbox_inches="tight")
+    plt.close(fig)
 
 def read_results(results_path, fname, blocks="all", concat=True, dd=False):
     """Read results saved in blocks"""
@@ -391,17 +400,18 @@ def compare_to_posterior(posterior_samples, posterior_values, preds, additional_
     Returns:
         metrics: A dictionary of metrics
     """
-    metrics = {}
-    metrics["KL"] = np.sum(posterior_values * np.log(posterior_values / preds))
-    metrics["MeanSE"] = np.mean((posterior_values - preds) ** 2.)
-    metrics["MaxSE"] = np.max((posterior_values - preds) ** 2.)
+    metrics_dict = {}
+    metrics_dict["KL"] = metrics.kullback_leibler_divergence((posterior_values), (preds))
+    metrics_dict["JS"] = metrics.jenson_shannon_divergence(posterior_values, preds)
+    metrics_dict["MeanSE"] = metrics.mean_squared_error(posterior_values, preds)
+    metrics_dict["MaxSE"] = metrics.max_squared_error(posterior_values, preds)
 
     if additional_metrics is not None:
         for name, f in additional_metrics.iteritems():
-            metrics[name] = f(posterior_values, preds)
-    return metrics
+            metrics_dict[name] = f(posterior_values, preds)
+    return metrics_dict
 
-def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="results.h5", plots=True, additional_metrics=None):
+def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="results.h5", plots=True, additional_metrics=None, scatter=True):
     """
     Load a weights for model and compare the predicted values to the true posterior
 
@@ -418,11 +428,11 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         data: list of tuples containing the predicted values and metrics dict
 
     """
-    from ..function_approximator import FunctionApproximator
+    from gwfa.function_approximator import FunctionApproximator
     if outdir is None:
         outdir = run_path
     if not os.path.isdir(outdir):
-        os.mkdir(outdir)
+        raise ValueError("Output directory does not exist")
     # format of posteior results determined by Bilby
     posterior_results = deepdish.io.load(sampling_results)["posterior"]
     p = ["psi", "luminosity_distance", "iota"]
@@ -434,17 +444,21 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
     for c, wf in enumerate(weights_files):
         print("Loading weights from: " +  wf)
         FA.load_weights(wf)
-        preds = FA.predict(posterior_samples)
+        normalised_samples, preds = FA.predict(posterior_samples)
         m = compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics)
+        if scatter:
+            make_scatter(normalised_samples, posterior_values, preds, outdir=outdir + "block{}/".format(c), parameters=p, fname="scatter_posterior.png")
         data.append((preds, m))
 
     if plots:
         print("Making plots")
         n_subplots = int(np.ceil(np.sqrt(len(weights_files))))
         hist_fig = plt.figure(figsize=(12, 10))
-        meanSE = np.empty(c + 1)
+        metric_names = [k for k in data[0][1].keys()]
+        metrics_array = np.empty([len(metric_names), c + 1])
         for i, d in enumerate(data):
-            meanSE[i] = d[1]["MeanSE"]
+            for j, name in enumerate(metric_names):
+                metrics_array[j, i] = d[1][name]
             ax = hist_fig.add_subplot(n_subplots, n_subplots, i + 1)
             ax.hist(d[0], alpha=0.5, label="Predicted posteior", density=True)
             ax.hist(posterior_values, alpha=0.5, label="True posterior", density=True)
@@ -456,11 +470,12 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         plt.close(hist_fig)
 
         metrics_fig = plt.figure(figsize=(12, 10))
-        plt.plot(meanSE, 'o')
-        plt.yscale("log")
-        plt.xlabel("Block")
-        plt.ylabel("meanSE")
-        metrics_fig.savefig(outdir + "meanSE.png")
+        for i, m in enumerate(metrics_array):
+            ax = metrics_fig.add_subplot(1 , len(metrics_array), i + 1)
+            ax.plot(m, 'o')
+            ax.set_xlabel("Block")
+            ax.set_ylabel(metric_names[i])
+        metrics_fig.savefig(outdir +  "metrics.png")
         plt.close(metrics_fig)
 
     return data
