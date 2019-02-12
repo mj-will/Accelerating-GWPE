@@ -10,7 +10,7 @@ from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStoppin
 import tensorflow as tf
 import keras.backend as K
 
-import utils
+from gwfa import utils
 
 # TensorFlow wizardry
 config = tf.ConfigProto()
@@ -173,10 +173,12 @@ class FunctionApproximator(object):
         # more callbacks can be added by appending to callbacks
         history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=2, callbacks=callbacks, **self._training_parameters)
         y_train_pred = self.model.predict(self.x_train)
+        # load weights from best epoch
         self.model.load_weights(self.weights_file)
         y_pred = self.model.predict(self.x_val).ravel()
-        results_dict = {"x_train": self.x_train,
-                        "x_val": self.x_val,
+        # save the x arrays before they're split into extrinsic/intrinsic
+        results_dict = {"x_train": x_train,
+                        "x_val": x_val,
                         "y_train": self.y_train,
                         "y_val": self.y_val,
                         "y_train_pred": y_train_pred,
@@ -197,7 +199,7 @@ class FunctionApproximator(object):
         x = self._normalise_input_data(x)
         x = self._split_data(x)
         y = self.model.predict(x).ravel()
-        return y
+        return x, y
 
     def _make_run_dir(self):
         """Check run count and make outdir"""
