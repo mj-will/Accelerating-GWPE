@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import sys
 import numpy as np
 
@@ -22,7 +24,8 @@ def main():
     priors_in, priors_ex = data.split_parameters()
     n_extrinsic = np.shape(priors_ex)[-1]
     n_intrinsic = np.shape(priors_in)[-1]
-    FA = FunctionApproximator(n_extrinsic, n_intrinsic, json_file=model_path, parameter_names=data.parameters)
+    n_inputs = [n_extrinsic, n_intrinsic]
+    FA = FunctionApproximator(n_inputs, json_file=model_path, parameter_names=data.parameters)
     priors = np.concatenate([priors_ex, priors_in], axis=-1)
     FA.setup_normalisation(priors)
     data.prep_data_chain(block_size=params["block size"], norm_logL=False, norm_intrinsic=False, norm_extrinsic=False)
