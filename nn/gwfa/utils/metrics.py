@@ -2,12 +2,18 @@
 import numpy as np
 from gwfa.utils.general import fuzz
 
+def check_normalise(x):
+    if np.isclose(np.sum(x), 1.):
+        return x
+    else:
+        return x / np.sum(x)
+
 def kullback_leibler_divergence(P, Q):
     """
     Compute the Kullback-Leibler divergence for two distributions.
     """
-    P = P + fuzz()
-    Q = Q + fuzz()
+    P = check_normalise(P) + fuzz()
+    Q = check_normalise(Q) + fuzz()
     return np.sum(P * np.log(P / Q))
 
 def jenson_shannon_divergence(P, Q):
