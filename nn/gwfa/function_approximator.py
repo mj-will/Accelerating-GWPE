@@ -7,19 +7,8 @@ import deepdish
 
 from keras.optimizers import SGD, RMSprop, Adam
 from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping
-import tensorflow as tf
-import keras.backend as K
 
 from gwfa import utils
-
-# TensorFlow wizardry
-config = tf.ConfigProto()
-# Don't pre-allocate memory; allocate as-needed
-config.gpu_options.allow_growth = True
-# Only allow a total of half the GPU memory to be allocated
-config.gpu_options.per_process_gpu_memory_fraction = 0.5
-# Create a session with the above options specified.
-K.tensorflow_backend.set_session(tf.Session(config=config))
 
 class FunctionApproximator(object):
 
@@ -175,7 +164,9 @@ class FunctionApproximator(object):
         y_train_pred = self.model.predict(self.x_train)
         # load weights from best epoch
         self.model.load_weights(self.weights_file)
-        y_pred = self.model.predict(self.x_val).ravel()
+        # cast to float64 since results are loglikelihoods
+        # if logL ~ 100, exp(logL) will return inf
+        y_pred = np.float64(self.model.predict(self.x_val).ravel())
         # save the x arrays before they're split into extrinsic/intrinsic
         results_dict = {"x_train": x_train,
                         "x_val": x_val,
@@ -198,7 +189,7 @@ class FunctionApproximator(object):
         """Get predictions for a given set of points in parameter space that have not been normalised"""
         x = self._normalise_input_data(x)
         x = self._split_data(x)
-        y = self.model.predict(x).ravel()
+        y = np.float64(self.model.predict(x).ravel())
         return x, y
 
     def _make_run_dir(self):
