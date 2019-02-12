@@ -2,6 +2,10 @@
 import shutil
 import os
 
+def fuzz():
+    """Fuzz factor to avoid NaNs"""
+    return 1e-6
+
 def copytree(src, dst, symlinks=False, ignore=None):
     """Move the contents of a directory to a specified directory"""
     for item in os.listdir(src):
