@@ -401,8 +401,10 @@ def compare_to_posterior(posterior_samples, posterior_values, preds, additional_
         metrics: A dictionary of metrics
     """
     metrics_dict = {}
-    metrics_dict["KL"] = metrics.kullback_leibler_divergence((posterior_values), (preds))
-    metrics_dict["JS"] = metrics.jenson_shannon_divergence(posterior_values, preds)
+    P = np.exp(posterior_values)
+    Q = np.exp(np.float(preds))
+    metrics_dict["KL"] = metrics.kullback_leibler_divergence(P, Q)
+    metrics_dict["JS"] = metrics.jenson_shannon_divergence(P, Q)
     metrics_dict["MeanSE"] = metrics.mean_squared_error(posterior_values, preds)
     metrics_dict["MaxSE"] = metrics.max_squared_error(posterior_values, preds)
 
@@ -436,8 +438,8 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
     # format of posteior results determined by Bilby
     posterior_results = deepdish.io.load(sampling_results)["posterior"]
     p = ["psi", "luminosity_distance", "iota"]
-    posterior_samples = posterior_results[p].values
     posterior_values = posterior_results["logL"].values# + posterior_results["logPrior"].values
+    posterior_samples = posterior_results.drop(["logL", "logPrior"], axis=1).values
     FA = FunctionApproximator(attr_dict=run_path + "fa.pkl")
     weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks="all")
     data = []
@@ -471,10 +473,12 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
 
         metrics_fig = plt.figure(figsize=(12, 10))
         for i, m in enumerate(metrics_array):
-            ax = metrics_fig.add_subplot(1 , len(metrics_array), i + 1)
+            ax = metrics_fig.add_subplot(len(metrics_array), 1, i + 1)
             ax.plot(m, 'o')
+            ax.set_yscale("log")
             ax.set_xlabel("Block")
             ax.set_ylabel(metric_names[i])
+        metrics_fig.tight_layout()
         metrics_fig.savefig(outdir +  "metrics.png")
         plt.close(metrics_fig)
 
