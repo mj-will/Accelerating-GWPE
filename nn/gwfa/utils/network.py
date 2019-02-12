@@ -1,6 +1,4 @@
 
-from __future__ import print_function
-
 import json
 import numpy as np
 import tensorflow as tf
@@ -22,120 +20,75 @@ def get_parameters_from_json(model_path, verbose=1):
         params = json.load(read_file)
     return params
 
-def get_predictions(x, model, N_intrinsic, N_extrinsic, weights_file=None):
-    """Get prediction froma model or model file
-
-    Args:
-        x: Values to evaluate
-        model: An instance of a keras model or a string pointing to a .json model
-        N_intrinsic: Number of intrinsic parameters
-        N_extrinsic: Number of extrinsic parameters
-
-    """
-    params = False
-    if type(model) == str:
-        if ".json" in model:
-            params = get_parameters_from_json(model)
-            model = network(N_intrinsic, N_extrinsic, params)
-        else:
-            raise ValueError("Trying to load model from unknown format")
-    elif type(model) == keras.models.Model:
-        pass
-    else:
-        raise ValueError("Unknown model format")
-    # load weights if file provided
-    # need to in load weights for a block, but model hasn"t changed
-    if weights_file is not None:
-        model.load_weights(weights_file)
-    elif params:
-        print("Built model from json but could not load weights")
-
-    return model.predict(x), model
-
-
-def network(N_extrinsic, N_intrinsic, params):
+def network(n_inputs, parameters):
     """Get the model for neural network"""
-    N_neurons = params["neurons"]
-    N_mixed_neurons = params["mixed neurons"]
-    N_layers = params["layers"]
-    N_mixed_layers = params["mixed layers"]
-    dropout = params["dropout"]
-    mixed_dropout = params["mixed dropout"]
-    bn = params["batch norm"]
-    activation = params["activation"]
-    regularization = params["regularization"]
 
-    if not N_intrinsic and not N_extrinsic:
-        raise ValueError("Specified no intrinsic or extrinsic parameters. Cannot make a network with no inputs!")
+    if type(n_inputs) == int:
+        if n_inputs == 0:
+            raise ValueError("Number of inputs must be non-zero")
+        n_inputs = [n_inputs]
+    else:
+        if len(n_inputs) < 1 :
+            raise ValueError("Must specifiy number of inputs")
 
-    if not isinstance(N_neurons, (list, tuple, np.ndarray)):
-        N_neurons = N_neurons * np.ones(N_layers, dtype=int)
-    if not isinstance(N_mixed_neurons, (list, tuple, np.ndarray)):
-        N_mixed_neurons = N_mixed_neurons * np.ones(N_mixed_layers, dtype=int)
-    if not len(N_neurons) is N_layers:
+    n_neurons = parameters["neurons"]
+    n_mixed_neurons = parameters["mixed neurons"]
+    n_layers = parameters["layers"]
+    n_mixed_layers = parameters["mixed layers"]
+    dropout_rate = parameters["dropout"]
+    mixed_dropout_rate = parameters["mixed dropout"]
+    batch_norm = parameters["batch norm"]
+    activation = parameters["activation"]
+    regularization = parameters["regularization"]
+
+    if not isinstance(n_neurons, (list, tuple, np.ndarray)):
+        n_neurons = n_neurons * np.ones(n_layers, dtype=int)
+    if not isinstance(n_mixed_neurons, (list, tuple, np.ndarray)):
+        n_mixed_neurons = n_mixed_neurons * np.ones(n_mixed_layers, dtype=int)
+    if not len(n_neurons) is n_layers:
         raise ValueError("Specified more layers than neurons")
-
-    def probit(x):
-        """return probit of x"""
-        normal = tf.distributions.Normal(loc=0., scale=1.)
-        return normal.cdf(x)
 
     if activation == "erf":
         activation = tf.erf
     elif activation == "probit":
+        def probit(x):
+            """return probit of x"""
+            normal = tf.distributions.Normal(loc=0., scale=1.)
+            return normal.cdf(x)
         actiavtion = probit
 
     if regularization == "l1":
-        reg = regularizers.l1(params["lambda"])
+        reg = regularizers.l1(parameters["lambda"])
     elif regularization == "l2":
-        reg = regularizers.l2(params["lambda"])
+        reg = regularizers.l2(parameters["lambda"])
     else:
         print("Proceeding with no regularization")
         reg = None
 
     inputs = []
-    output_layers = []
-    if N_extrinsic:
-        EX_input = Input(shape=(N_extrinsic,), name="extrinsic_input")
-        inputs.append(EX_input)
-        for i in range(N_layers):
-            if i is 0:
-                EX = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name="extrinsic_dense_{}".format(i))(EX_input)
-            else:
-                EX = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name="extrinsic_dense_{}".format(i))(EX)
-                if dropout:
-                    EX = Dropout(dropout)(EX)
-                if bn:
-                    EX = BatchNormalization()(EX)
-        output_layers.append(EX)
-    if N_intrinsic:
-        IN_input = Input(shape=(N_intrinsic,), name="intrinsic_input")
-        inputs.append(IN_input)
-        for i in range(N_layers):
-            if i is 0:
-                IN = Dense(N_neurons[i], activation=activation, kernel_regularizer=reg, name="intrinsic_dense_{}".format(i))(IN_input)
-            else:
-                IN = Dense(N_neurons[i], activation=activation,  kernel_regularizer=reg, name="intrinsic_dense_{}".format(i))(IN)
-                if dropout:
-                    IN = Dropout(dropout)(IN)
-                if bn:
-                    IN = BatchNormalization()(IN)
-        output_layers.append(IN)
-    # make model
-    if len(output_layers) > 1:
-        outputs = concatenate(output_layers, name="merge_intrinsic_extrinsic")
-    else:
-        outputs = output_layers[-1]
-    # add mixed layers:
-    for i in range(N_mixed_layers):
-        outputs = Dense(N_mixed_neurons[i], activation=activation, kernel_regularizer=reg, name="mixed_dense_{}".format(i))(outputs)
-        if mixed_dropout:
-            outputs = Dropout(mixed_dropout)(outputs)
-        if bn:
-            outputs = BatchNormalization()(outputs)
+    block_outputs = []
+    for i, n in enumerate(n_inputs):
+        layer = Input(shape=(n,), name="input_" + str(i + 1))
+        inputs.append(layer)
+        for j in range(n_layers):
+            layer = Dense(n_neurons[i], activation=activation, kernel_regularizer=reg, name="p{}_dense_{}".format(i, j))(layer)
+            if dropout_rate:
+                layer = Dropout(dropout_rate)(layer)
+            if batch_norm:
+                layer = BatchNormalization(layer)
+        block_outputs.append(layer)
+    print(len(block_outputs))
+    if len(block_outputs) > 1:
+        layer = concatenate(block_outputs, name="concat_blocks")
+        for i in range(n_mixed_layers):
+            layer = Dense(n_mixed_neurons[i], activation=activation, kernel_regularizer=reg, name="mix_dense_{}".format(i))(layer)
+            if mixed_dropout_rate:
+                layer = Dropout(mixed_dropout_rate)(layer)
+            if batch_norm:
+                outputs = BatchNormalization()(layer)
     # make final layer
-    output_layer = Dense(1, activation="linear", name="output_dense")(outputs)
+    output_layer = Dense(1, activation="linear", name="output_dense")(layer)
     model = Model(inputs=inputs, outputs=output_layer)
-    # print model
     model.summary()
+
     return model
