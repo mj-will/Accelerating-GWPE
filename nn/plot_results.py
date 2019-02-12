@@ -1,15 +1,20 @@
+#!/usr/bin/env python
 
 import sys
-from utils import make_plots_multiple
+from gwfa.utils.plotting import make_plots_multiple, compare_run_to_posterior
 
-def main():
-    inputdir = sys.argv[1]
-    outputdir = sys.argv[2]
-    make_plots_multiple(inputdir, outputdir, blocks = "all")
+def main(posterior_samples, indir, outdir):
+    """Make plots given some results"""
+    compare_run_to_posterior(indir, posterior_samples, outdir=outdir, scatter=True)
+    make_plots_multiple(indir, outdir, scatter=True, dd=True)
 
 if __name__ == '__main__':
     if len(sys.argv) < 3:
-        raise ValueError("Missing output dir")
+        raise ValueError("Missing posterior samples and input director")
+    elif len(sys.argv) == 3:
+        main(sys.argv[1], sys.argv[2], sys.argv[2])
+    elif len(sys.argc) == 4:
+        main(sys.argv[1], sys.argv[2], sys.argv[3])
     else:
-        main()
+        raise ValueError("Too many system arguments")
 
