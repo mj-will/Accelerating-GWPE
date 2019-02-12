@@ -1,3 +1,3 @@
-import function_approximator
-import data
-import utils
+
+from gwfa import function_approximator
+from gwfa import data
