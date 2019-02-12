@@ -12,18 +12,27 @@ from gwfa import utils
 
 class FunctionApproximator(object):
 
-    def __init__(self, n_extrinsic=None, n_intrinsic=None, parameter_names=None, json_file=None, attr_dict=None):
+    def __init__(self, n_inputs=None, parameter_names=None, json_file=None, attr_dict=None):
         if json_file is not None and attr_dict is not None:
             raise ValueError("Provided both json file and attribute dict, use one or other")
         elif json_file is not None:
-            self.n_extrinsic = n_extrinsic
-            self.n_intrinsic = n_intrinsic
+            # make sure n_inputs is a list
+            # also determine whether to split inputs or not
+            if type(n_inputs) == int:
+                self.split = False
+                self.n_inputs = list(n_inputs)
+            else:
+                if len(n_inputs) > 1:
+                    self.split = True
+                else:
+                    self.split = False
+                self.n_inputs = n_inputs
             self.compiled = False
             self.model = None
             self._count = 0
             self.normalise = False
             if parameter_names is None:
-                self.parameter_names = ["parameter_" + str(i) for i in range(n_extrinsic + n_intrinsic)]
+                self.parameter_names = ["parameter_" + str(i) for i in range(self._n_parameters)]
             else:
                 self.parameter_names = parameter_names
             self.setup_from_json(json_file)
@@ -36,13 +45,18 @@ class FunctionApproximator(object):
         args = "".join("{}: {}\n".format(key, value) for key, value in six.iteritems(self.parameters))
         return "FunctionApproximator instance\n" + "".join("    {}: {}\n".format(key, value) for key, value in six.iteritems(self.parameters))
 
+    @property
+    def _n_parameters(self):
+        """Return the number of input parameters"""
+        return sum(self.n_inputs)
+
     def setup_from_attr_dict(self, attr_dict):
         """Set up the approximator from a dictionary of attributes"""
         with open(attr_dict, "rb") as f:
-            d = six.moves.cPickle.load(f)
+            d = six.moves.cPickle.load(f, encoding='latin1')
         for key, value in six.iteritems(d):
             setattr(self, key, value)
-        self.model = utils.network.network(self.n_extrinsic, self.n_intrinsic, self.parameters)
+        self.model = utils.network.network(self.n_inputs, self.parameters)
         self._compile_network()
 
     def setup_from_json(self, json_file):
@@ -54,7 +68,7 @@ class FunctionApproximator(object):
             self._setup_directories()
             shutil.copy(json_file, self.tmp_outdir)
             # setup network
-            self.model = utils.network.network(self.n_extrinsic, self.n_intrinsic, self.parameters)
+            self.model = utils.network.network(self.n_inputs, self.parameters)
             self._compile_network()
             self.data_all = {}
         else:
@@ -90,7 +104,7 @@ class FunctionApproximator(object):
     def setup_normalisation(self, priors):
         """
         Get range of priors for the parameters to be later used for normalisation
-        NOTE: expect parameters to be ordered: extrinsic, intrinsic
+        NOTE: expect parameters to be ordered in same order as parameter sets
         """
         self._prior_max = np.max(priors, axis=0)
         self._prior_min = np.min(priors, axis=0)
@@ -106,9 +120,13 @@ class FunctionApproximator(object):
         return {"epochs": self.parameters["epochs"], "batch_size": self.parameters["batch_size"]}
 
     def _split_data(self, x):
-        """Split data according to number of extrinsic and intrinsic parameters"""
-        if self.n_extrinsic and self.n_intrinsic:
-            x_split = [x[:, :self.n_extrinsic], x[:, -self.n_intrinsic:]]
+        """Split data according to number of input parameter sets parameters"""
+        if self.split:
+            x_split = []
+            m = 0
+            for n in self.n_inputs:
+                x_split.append(x[:, m:m + n])
+                m = n
         else:
             x_split = x
         return x_split
@@ -167,7 +185,7 @@ class FunctionApproximator(object):
         # cast to float64 since results are loglikelihoods
         # if logL ~ 100, exp(logL) will return inf
         y_pred = np.float64(self.model.predict(self.x_val).ravel())
-        # save the x arrays before they're split into extrinsic/intrinsic
+        # save the x arrays before they're split parameter sets
         results_dict = {"x_train": x_train,
                         "x_val": x_val,
                         "y_train": self.y_train,
@@ -187,10 +205,10 @@ class FunctionApproximator(object):
 
     def predict(self, x):
         """Get predictions for a given set of points in parameter space that have not been normalised"""
-        x = self._normalise_input_data(x)
-        x = self._split_data(x)
-        y = np.float64(self.model.predict(x).ravel())
-        return x, y
+        norm_x = self._normalise_input_data(x)
+        split_x = self._split_data(norm_x)
+        y = np.float64(self.model.predict(split_x).ravel())
+        return norm_x, y
 
     def _make_run_dir(self):
         """Check run count and make outdir"""
