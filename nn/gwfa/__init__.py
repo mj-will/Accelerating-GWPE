@@ -1,4 +1,6 @@
 
+from __future__ import print_function
+
 from gwfa import function_approximator
 from gwfa import data
 
