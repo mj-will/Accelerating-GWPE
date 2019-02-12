@@ -2,6 +2,7 @@
 from __future__ import print_function
 
 import os
+import six
 import h5py
 import deepdish
 from collections import OrderedDict
@@ -153,9 +154,14 @@ def make_scatter(x, y_true, y_pred, outdir='', parameters=None, fname="scatter.p
     fig.savefig(outdir + fname, dpi=400, bbox_inches="tight")
     plt.close(fig)
 
-def read_results(results_path, fname, blocks="all", concat=True, dd=False):
-    """Read results saved in blocks"""
+def read_results(results_path, fname, blocks="all", concat=True, dd=True):
+    """
+    Read results saved in blocks
+
+    NOTE: Old runs may be saved with h5py rather than deepdish. For these runs use dd=False.
+    """
     if dd:
+        print(results_path + fname)
         hf = deepdish.io.load(results_path + fname)
     else:
         hf = h5py.File(results_path + fname, "r")
@@ -176,12 +182,11 @@ def read_results(results_path, fname, blocks="all", concat=True, dd=False):
                     d[key].append(hf[block_key][key][:])
     # concatenate all the blocks together
     if concat:
-        for key, value in d.iteritems():
+        for key, value in six.iteritems(d):
             if key is "parameters":
                 d[key] = value[0]
             else:
                 d[key] = np.concatenate(value, axis=0)
-
     return d
 
 def get_weights(results_path, weights_fname="model_weights.h5", blocks="all"):
@@ -214,13 +219,13 @@ def get_weights(results_path, weights_fname="model_weights.h5", blocks="all"):
             weights_files.append(wf)
     return weights_files
 
-def make_plots_multiple(results_path, outdir, fname='results.h5', blocks='all', plot_function=make_plots, **kwargs):
+def make_plots_multiple(results_path, outdir, fname='results.h5', blocks='all', plot_function=make_plots, scatter=True, **kwargs):
     """
     Search path for results files with given name and make combined plots.
     """
     # get dictionary of results
     d = read_results(results_path, fname, blocks, concat=True, **kwargs)
-    plot_function(outdir, scatter=True, **d)
+    plot_function(outdir, scatter=scatter, **d)
 
 
 def compare_runs(results_path, outdir, data_path=None, fname='results.h5', model_name='auto_model.json', parameter='neurons'):
@@ -402,7 +407,7 @@ def compare_to_posterior(posterior_samples, posterior_values, preds, additional_
     """
     metrics_dict = {}
     P = np.exp(posterior_values)
-    Q = np.exp(np.float(preds))
+    Q = np.exp(np.float64(preds))
     metrics_dict["KL"] = metrics.kullback_leibler_divergence(P, Q)
     metrics_dict["JS"] = metrics.jenson_shannon_divergence(P, Q)
     metrics_dict["MeanSE"] = metrics.mean_squared_error(posterior_values, preds)
@@ -435,11 +440,13 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         outdir = run_path
     if not os.path.isdir(outdir):
         raise ValueError("Output directory does not exist")
-    # format of posteior results determined by Bilby
+    # format of posterior results determined by Bilby
     posterior_results = deepdish.io.load(sampling_results)["posterior"]
     p = ["psi", "luminosity_distance", "iota"]
     posterior_values = posterior_results["logL"].values# + posterior_results["logPrior"].values
-    posterior_samples = posterior_results.drop(["logL", "logPrior"], axis=1).values
+    posterior_results = posterior_results.drop(["logL", "logPrior"], axis=1)
+    posterior_samples = posterior_results.values
+    parameters = list(posterior_results.columns.values)
     FA = FunctionApproximator(attr_dict=run_path + "fa.pkl")
     weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks="all")
     data = []
@@ -449,7 +456,7 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         normalised_samples, preds = FA.predict(posterior_samples)
         m = compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics)
         if scatter:
-            make_scatter(normalised_samples, posterior_values, preds, outdir=outdir + "block{}/".format(c), parameters=p, fname="scatter_posterior.png")
+            make_scatter(normalised_samples, posterior_values, preds, outdir=outdir + "block{}/".format(c), parameters=parameters, fname="scatter_posterior.png")
         data.append((preds, m))
 
     if plots:
@@ -462,7 +469,7 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
             for j, name in enumerate(metric_names):
                 metrics_array[j, i] = d[1][name]
             ax = hist_fig.add_subplot(n_subplots, n_subplots, i + 1)
-            ax.hist(d[0], alpha=0.5, label="Predicted posteior", density=True)
+            ax.hist(d[0], alpha=0.5, label="Predicted postreior", density=True)
             ax.hist(posterior_values, alpha=0.5, label="True posterior", density=True)
             ax.set_title("Block " + str(i))
             ax.set_xlabel("logL")
