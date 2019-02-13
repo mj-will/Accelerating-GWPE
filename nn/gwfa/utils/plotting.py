@@ -431,6 +431,7 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         fname: name of results file in run directory
         plots: enable or disable plots
         additional_metrics: dict of additional metrics that take y_true and y_pred and return a single value
+        scatter: enable or disable scatter plots for each block
     Returns:
         data: list of tuples containing the predicted values and metrics dict
 
@@ -442,20 +443,25 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         raise ValueError("Output directory does not exist")
     # format of posterior results determined by Bilby
     posterior_results = deepdish.io.load(sampling_results)["posterior"]
-    p = ["psi", "luminosity_distance", "iota"]
     posterior_values = posterior_results["logL"].values# + posterior_results["logPrior"].values
-    posterior_results = posterior_results.drop(["logL", "logPrior"], axis=1)
+    # load the function approximator for this run
+    FA = FunctionApproximator(attr_dict=run_path + "fa.pkl")
+    # sort posterior according to order used in function approximator
+    posterior_results = posterior_results.drop(["logL", "logPrior"], axis=1)[FA.parameter_names]
     posterior_samples = posterior_results.values
     parameters = list(posterior_results.columns.values)
-    FA = FunctionApproximator(attr_dict=run_path + "fa.pkl")
+    # get an ordered list of weights files
     weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks="all")
     data = []
     for c, wf in enumerate(weights_files):
         print("Loading weights from: " +  wf)
         FA.load_weights(wf)
+        # samples are normalised using the prior ranges that where used to set up FA
         normalised_samples, preds = FA.predict(posterior_samples)
         m = compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics)
+        # scatter is slow to plot
         if scatter:
+            # make a scatter plot for the network after each block
             make_scatter(normalised_samples, posterior_values, preds, outdir=outdir + "block{}/".format(c), parameters=parameters, fname="scatter_posterior.png")
         data.append((preds, m))
 

@@ -1,6 +1,7 @@
 import os
 import numpy as np
 import pandas as pd
+import itertools
 
 class Data(object):
 
@@ -23,12 +24,14 @@ class Data(object):
 
     @property
     def parameters(self):
-        """Return a list of parameter names in the data"""
+        """Return a list of parameter names in the data in the correct order"""
         if self.df is None:
             raise RuntimeError("Dataframe not loaded")
             return None
         else:
-            return self.df.columns.values[:-2]    # last two columns are logL and logPrior
+            extrinsic = [name for name in self.df.columns.values if name in self._extrinsic_parameters]
+            intrinsic = [name for name in self.df.columns.values if name in self._intrinsic_parameters]
+            return extrinsic + intrinsic
 
     @property
     def _extrinsic_parameters(self):
