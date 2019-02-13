@@ -4,9 +4,10 @@ import shutil
 import six
 import numpy as np
 import deepdish
+import time
 
 from keras.optimizers import SGD, RMSprop, Adam
-from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping
+from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping, TensorBoard
 
 from gwfa import utils
 
@@ -20,7 +21,7 @@ class FunctionApproximator(object):
             # also determine whether to split inputs or not
             if type(n_inputs) == int:
                 self.split = False
-                self.n_inputs = list(n_inputs)
+                self.n_inputs = [n_inputs]
             else:
                 if len(n_inputs) > 1:
                     self.split = True
@@ -92,7 +93,7 @@ class FunctionApproximator(object):
             self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=utils.network.KL, metrics=["mse"])
         else:
             print("Using " + self.parameters["loss"])
-            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=self.parameters["loss"], metrics=[utils.network.KL])
+            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=self.parameters["loss"], metrics=[utils.network.KL, utils.network.JSD])
 
         self.compiled = True
 
@@ -109,6 +110,11 @@ class FunctionApproximator(object):
         self._prior_max = np.max(priors, axis=0)
         self._prior_min = np.min(priors, axis=0)
         self.normalise = True
+
+    @property
+    def _priors(self):
+        """Return the min and max of the priors used to normalise values"""
+        return self._prior_min, self._prior_max
 
     def _normalise_input_data(self, x):
         """Normalise the input data given the prior values provided at setup"""
@@ -176,6 +182,8 @@ class FunctionApproximator(object):
         # save best model during traing
         self.weights_file = block_outdir + "model_weights.h5"
         checkpoint = ModelCheckpoint(self.weights_file, verbose=0, monitor="val_loss", save_best_only=True, mode="auto")
+        tensorboard = TensorBoard(log_dir="./logs/{}_block{}".format(time.strftime('%b-%d-%Y_%H%M', time.localtime()), self._count), histogram_freq=10, batch_size=self.parameters["batch_size"])
+        callbacks.append(tensorboard)
         callbacks.append(checkpoint)
         # more callbacks can be added by appending to callbacks
         history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=2, callbacks=callbacks, **self._training_parameters)

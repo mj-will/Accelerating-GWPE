@@ -1,7 +1,9 @@
 
 import json
 import numpy as np
+
 import tensorflow as tf
+import keras.backend as K
 
 from keras.models import Sequential, Model
 from keras.layers import Dense, Activation, Dropout, concatenate, Input
@@ -10,7 +12,21 @@ from keras import regularizers
 
 def KL(y_true, y_pred):
     """Return kullback-Leibler divergence"""
-    return tf.reduce_sum(y_true * tf.log(y_true / y_pred))
+    y_true = tf.exp(tf.cast(y_true, dtype=tf.float64))
+    y_pred = tf.exp(tf.cast(y_pred, dtype=tf.float64))
+    P = (y_true / tf.reduce_sum(y_true)) + K.epsilon()
+    Q = y_pred / tf.reduce_sum(y_pred) + K.epsilon()
+    return tf.reduce_sum(P * tf.log(P / Q))
+
+def JSD(y_true, y_pred):
+    """Compute the Jenson-Shannon divergence"""
+    y_true = tf.exp(tf.cast(y_true, dtype=tf.float64))
+    y_pred = tf.exp(tf.cast(y_pred, dtype=tf.float64))
+    P = (y_true / tf.reduce_sum(y_true)) + K.epsilon()
+    Q = y_pred / tf.reduce_sum(y_pred) + K.epsilon()
+    const = tf.constant(0.5, dtype=tf.float64)
+    M = const * (P + Q)
+    return const * tf.reduce_sum(P * tf.log(P / M)) + const * tf.reduce_sum(Q * tf.log(Q / M))
 
 def get_parameters_from_json(model_path, verbose=1):
     """Get the parameters for the nn from the model.json file"""
