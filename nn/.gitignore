@@ -4,5 +4,6 @@ data/
 outdir
 misc_plots
 current_run/
+logs/
 # models
 *.json
