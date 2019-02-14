@@ -26,6 +26,11 @@ def check_any_none(l):
     """Check if any of the arrays are none"""
     return not all([np.any(a) for a in l])
 
+def blank_legend_entry():
+    """Return a patch that is not visible in matplotlib legend"""
+    return matplotlib.patches.Rectangle((0,0), 1, 1, fill=False, edgecolor="none",
+                                             visible=False)
+
 def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_train_pred=None, history=None, parameters=None, loss=None, val_loss=None, KL=None, val_KL=None, scatter=True, **kwargs):
     """
     Make plots from outputs of neural network training for a block of data
@@ -475,13 +480,15 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
             for j, name in enumerate(metric_names):
                 metrics_array[j, i] = d[1][name]
             ax = hist_fig.add_subplot(n_subplots, n_subplots, i + 1)
-            ax.hist(d[0], alpha=0.5, label="Predicted postreior", density=True)
-            ax.hist(posterior_values, alpha=0.5, label="True posterior", density=True)
+            _, _, h1 = ax.hist(d[0], alpha=0.5, label="Predicted postreior", density=True)
+            _, _, h2 = ax.hist(posterior_values, alpha=0.5, label="True posterior", density=True)
             ax.set_title("Block " + str(i))
             ax.set_xlabel("logL")
-            ax.legend(["Predicted", "True"])
+            ax.legend((blank_legend_entry(), blank_legend_entry()), ("KLD: {:.3f}".format(d[1]["KL"]), "JSD: {:.3f}".format(d[1]["JS"])))
+        h, l = ax.get_legend_handles_labels()
+        lgd = hist_fig.legend(h, l, loc ="lower center", fontsize=14)
         hist_fig.tight_layout()
-        hist_fig.savefig(outdir + "hist.png")
+        hist_fig.savefig(outdir + "hist.png", bbox_inches="tight")
         plt.close(hist_fig)
 
         metrics_fig = plt.figure(figsize=(12, 10))
