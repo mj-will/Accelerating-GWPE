@@ -36,7 +36,7 @@ def get_parameters_from_json(model_path, verbose=1):
         params = json.load(read_file)
     return params
 
-def network(n_inputs, parameters):
+def network(n_inputs, parameters, verbose=1):
     """Get the model for neural network"""
 
     if type(n_inputs) == int:
@@ -93,7 +93,6 @@ def network(n_inputs, parameters):
             if batch_norm:
                 layer = BatchNormalization(layer)
         block_outputs.append(layer)
-    print(len(block_outputs))
     if len(block_outputs) > 1:
         layer = concatenate(block_outputs, name="concat_blocks")
         for i in range(n_mixed_layers):
@@ -105,6 +104,7 @@ def network(n_inputs, parameters):
     # make final layer
     output_layer = Dense(1, activation="linear", name="output_dense")(layer)
     model = Model(inputs=inputs, outputs=output_layer)
-    model.summary()
+    if verbose:
+        model.summary()
 
     return model

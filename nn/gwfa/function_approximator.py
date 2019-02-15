@@ -13,10 +13,11 @@ from gwfa import utils
 
 class FunctionApproximator(object):
 
-    def __init__(self, n_inputs=None, parameter_names=None, json_file=None, attr_dict=None):
+    def __init__(self, n_inputs=None, parameter_names=None, json_file=None, attr_dict=None, verbose=1):
         if json_file is not None and attr_dict is not None:
             raise ValueError("Provided both json file and attribute dict, use one or other")
         elif json_file is not None:
+            self.verbose=verbose
             # make sure n_inputs is a list
             # also determine whether to split inputs or not
             if type(n_inputs) == int:
@@ -38,6 +39,7 @@ class FunctionApproximator(object):
                 self.parameter_names = parameter_names
             self.setup_from_json(json_file)
         elif attr_dict is not None:
+            self.verbose=verbose
             self.setup_from_attr_dict(attr_dict)
         else:
             raise ValueError("No json file or saved FA file for setup")
@@ -57,7 +59,7 @@ class FunctionApproximator(object):
             d = six.moves.cPickle.load(f, encoding='latin1')
         for key, value in six.iteritems(d):
             setattr(self, key, value)
-        self.model = utils.network.network(self.n_inputs, self.parameters)
+        self.model = utils.network.network(self.n_inputs, self.parameters, self.verbose)
         self._compile_network()
 
     def setup_from_json(self, json_file):
@@ -69,8 +71,9 @@ class FunctionApproximator(object):
             self._setup_directories()
             shutil.copy(json_file, self.tmp_outdir)
             # setup network
-            self.model = utils.network.network(self.n_inputs, self.parameters)
+            self.model = utils.network.network(self.n_inputs, self.parameters, self.verbose)
             self._compile_network()
+            self._start_time = time.strftime('%b-%d-%Y_%H%M', time.localtime())
             self.data_all = {}
         else:
             print("Function approximator already setup")
@@ -182,7 +185,7 @@ class FunctionApproximator(object):
         # save best model during traing
         self.weights_file = block_outdir + "model_weights.h5"
         checkpoint = ModelCheckpoint(self.weights_file, verbose=0, monitor="val_loss", save_best_only=True, mode="auto")
-        tensorboard = TensorBoard(log_dir="./logs/{}_block{}".format(time.strftime('%b-%d-%Y_%H%M', time.localtime()), self._count), histogram_freq=10, batch_size=self.parameters["batch_size"])
+        tensorboard = TensorBoard(log_dir="./logs/run_start_{}/block{}".format(self._start_time, self._count), histogram_freq=10, batch_size=self.parameters["batch_size"])
         callbacks.append(tensorboard)
         callbacks.append(checkpoint)
         # more callbacks can be added by appending to callbacks
