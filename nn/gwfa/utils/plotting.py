@@ -9,8 +9,8 @@ from collections import OrderedDict
 
 import numpy as np
 
-import matplotlib
-matplotlib.use("Agg")
+import matplotlib as mpl
+mpl.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
@@ -28,7 +28,7 @@ def check_any_none(l):
 
 def blank_legend_entry():
     """Return a patch that is not visible in matplotlib legend"""
-    return matplotlib.patches.Rectangle((0,0), 1, 1, fill=False, edgecolor="none",
+    return mpl.patches.Rectangle((0,0), 1, 1, fill=False, edgecolor="none",
                                              visible=False)
 
 def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_train_pred=None, history=None, parameters=None, loss=None, val_loss=None, KL=None, val_KL=None, scatter=True, **kwargs):
@@ -144,16 +144,23 @@ def make_scatter(x, y_true, y_pred, outdir='', parameters=None, fname="scatter.p
                 sp = x[:, idx].T
                 sc = ax.scatter(*sp, c=error, vmin=-max_error, vmax=max_error, marker=".", cmap=plt.cm.RdBu_r)
                 # add labels if possible
-                if parameters is not None:
-                    if (i + 1) == N_params:
-                        ax.set_xlabel(parameters[j])
-                    if j == 0:
-                        ax.set_ylabel(parameters[i])
             elif j == i:
                 h = x[:, j].T
-                ax.hist(h, density=True, alpha=0.5)
+                ax.hist(h, density=True, alpha=0.5, color="firebrick")
+
             else:
                 ax.set_axis_off()
+            if  (i + 1) < N_params:
+                ax.get_shared_x_axes().join(ax, axes[i, 0])
+                ax.set_xticklabels([])
+            if j > 0:
+                ax.get_shared_y_axes().join(ax, axes[0, j])
+                ax.set_yticklabels([])
+            if parameters is not None:
+                if (i + 1) == N_params:
+                    ax.set_xlabel(parameters[j])
+                if j == 0 and i != 0:
+                    ax.set_ylabel(parameters[i])
     cbar = fig.colorbar(sc, ax=axes.ravel().tolist(), shrink=0.5)
     cbar.set_label("Error logL", rotation=270)
     fig.savefig(outdir + fname, dpi=400, bbox_inches="tight")
@@ -166,7 +173,6 @@ def read_results(results_path, fname, blocks="all", concat=True, dd=True):
     NOTE: Old runs may be saved with h5py rather than deepdish. For these runs use dd=False.
     """
     if dd:
-        print(results_path + fname)
         hf = deepdish.io.load(results_path + fname)
     else:
         hf = h5py.File(results_path + fname, "r")
@@ -174,6 +180,8 @@ def read_results(results_path, fname, blocks="all", concat=True, dd=True):
     d = OrderedDict()
     if blocks == "all":
         blocks = ["block{}".format(b) for b in range(1, len(hf.keys()) + 1)]
+    elif blocks == "last":
+        blocks = ["block" +  str(len(hf.keys()) - 1)]
     else:
         blocks = ["block{}".format(b) for b in blocks]
     # blocks must be in order for loss plots
@@ -308,23 +316,26 @@ def compare_runs(results_path, outdir, data_path=None, fname='results.h5', model
         fig.savefig(outdir + 'corner.png')
 
 
-def compare_runs_2d(results_path, outdir, data_path=None, fname="results.h5", model_name="auto_model.json", parameters=["neurons", "layers"], block=3, metric="MSE", labels=None):
+def compare_runs_2d(results_path, outdir, run_start=0, data_path=None, fname="results.h5", model_name="auto_model.json", parameters=["neurons", "layers"], block="last", metric="MSE", labels=None):
     """Compare the results from a directory full of runs using models that vary over two parameters"""
 
+    from gwfa.utils import network
     if not os.path.isdir(outdir):
         os.mkdir(outdir)
-    count = 0
+    count = run_start
     run_path = results_path + "run{}/".format(count)
     results = []
     params = []
+
     # load all runs
     while os.path.isdir(run_path):
-        d = read_results(run_path, fname, blocks=[block], concat=False)
-        p = get_network_params_from_json(run_path + model_name, verbose=0)
+        d = read_results(run_path, fname, blocks=block, concat=False)
+        p = network.get_parameters_from_json(run_path + model_name, verbose=0)
         results.append(d)
         params.append(p)
         run_path = run_path.replace(str(count), str(count + 1))
         count += 1
+    count = count - run_start
     print("Comparing {} runs".format(count))
     if metric == "MSE":
         train_metric = "loss"
@@ -343,7 +354,7 @@ def compare_runs_2d(results_path, outdir, data_path=None, fname="results.h5", mo
         Y[i] = p[parameters[1]]
         Z_train[i] = np.nanmin(np.abs(r[train_metric][-1][:]))
         Z_val[i] = np.nanmin(np.abs(r[val_metric][-1][:]))
-        MaxSE[i] = np.max((r["y_true"][-1][:] - r["y_pred"][-1][:]) ** 2.)
+        MaxSE[i] = np.max((r["y_val"][-1][:] - r["y_pred"][-1][:]) ** 2.)
 
     # labels
     if labels is not None and len(labels) == 2:
@@ -354,6 +365,8 @@ def compare_runs_2d(results_path, outdir, data_path=None, fname="results.h5", mo
         Y_label = parameters[1]
     NX = np.unique(X).shape[0]
     NY = np.unique(Y).shape[0]
+    if len(X) / NX == NY:
+        print(len(X), len(Y), NX, NY)
     idx = np.argsort(X)
     X = X[idx].reshape(NX, NY)
     Y = Y[idx].reshape(NX, NY)
@@ -362,7 +375,7 @@ def compare_runs_2d(results_path, outdir, data_path=None, fname="results.h5", mo
 
     Z = {"train": Z_train, "val": Z_val}
 
-    for key, z in Z.iteritems():
+    for key, z in six.iteritems(Z):
         fig = plt.figure(figsize=(12, 10))
         sc = plt.scatter(X.flatten(), Y.flatten(), c=np.log(z.flatten()), cmap=plt.cm.viridis_r)
         cbar = plt.colorbar(sc)
@@ -410,7 +423,7 @@ def compare_to_posterior(posterior_samples, posterior_values, preds, additional_
     Returns:
         metrics: A dictionary of metrics
     """
-    metrics_dict = {}
+    metrics_dict = OrderedDict()
     P = np.exp(posterior_values)
     Q = np.exp(np.float64(preds))
     metrics_dict["KL"] = metrics.kullback_leibler_divergence(P, Q)
@@ -423,7 +436,7 @@ def compare_to_posterior(posterior_samples, posterior_values, preds, additional_
             metrics_dict[name] = f(posterior_values, preds)
     return metrics_dict
 
-def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="results.h5", plots=True, additional_metrics=None, scatter=True):
+def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="results.h5", plots=True, additional_metrics=None, scatter=True, blocks="all"):
     """
     Load a weights for model and compare the predicted values to the true posterior
 
@@ -442,6 +455,8 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
 
     """
     from gwfa.function_approximator import FunctionApproximator
+    if run_path[-1] is not "/":
+        run_path = run_path + "/"
     if outdir is None:
         outdir = run_path
     if not os.path.isdir(outdir):
@@ -450,13 +465,13 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
     posterior_results = deepdish.io.load(sampling_results)["posterior"]
     posterior_values = posterior_results["logL"].values# + posterior_results["logPrior"].values
     # load the function approximator for this run
-    FA = FunctionApproximator(attr_dict=run_path + "fa.pkl")
+    FA = FunctionApproximator(attr_dict=run_path + "fa.pkl", verbose=0)
     # sort posterior according to order used in function approximator
     posterior_results = posterior_results.drop(["logL", "logPrior"], axis=1)[FA.parameter_names]
     posterior_samples = posterior_results.values
     parameters = list(posterior_results.columns.values)
     # get an ordered list of weights files
-    weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks="all")
+    weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks=blocks)
     data = []
     for c, wf in enumerate(weights_files):
         print("Loading weights from: " +  wf)
@@ -465,7 +480,7 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         normalised_samples, preds = FA.predict(posterior_samples)
         m = compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics)
         # scatter is slow to plot
-        if scatter:
+        if scatter and plots:
             # make a scatter plot for the network after each block
             make_scatter(normalised_samples, posterior_values, preds, outdir=outdir + "block{}/".format(c), parameters=parameters, fname="scatter_posterior.png")
         data.append((preds, m))
@@ -501,5 +516,44 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         metrics_fig.tight_layout()
         metrics_fig.savefig(outdir +  "metrics.png")
         plt.close(metrics_fig)
+    if len(data) == 1:
+        data = data[0]
+    return data, FA
 
-    return data
+def search_for_runs(path):
+    """Return a naturally sorted list of all the run directories in a given path"""
+    dirs = filter(os.path.isdir, [path + i for i in os.listdir(path)])
+    runs = filter(lambda d: "run" in d, dirs)
+    runs_srt = sorted(runs, key=lambda s: int(s.split("run")[-1]))
+    return runs_srt
+
+def compare_search_posterior(results_dir, sampling_results, outdir=None, fname="results.h5", parameters=["neurons", "layers"]):
+    """Compare the runs in directory using the posterior samples"""
+    if outdir is None:
+        outdir = results_dir
+    if not os.path.isdir(outdir):
+        raise ValueError("Output directory does not exist")
+    runs = search_for_runs(results_dir)
+
+    metrics = np.empty(len(runs), dtype=np.ndarray)
+    metric_names = False
+    parameter_values = np.empty([len(runs), len(parameters)])
+    for i, r in enumerate(runs):
+        d, FA = compare_run_to_posterior(r, sampling_results, plots=False, blocks="last")
+        metrics[i] = list(d[1].values())
+        if not metric_names:
+            metric_names = list(d[1].keys())
+        parameter_values[i] = [FA.parameters[p] for p in parameters]
+    # metrics is array of ndarrays, convert to a 2D array
+    metrics = np.vstack(metrics).T
+    n_metrics = metrics.shape[0]
+    fig = plt.figure(figsize=(20, 8))
+    for i, m in enumerate(metrics):
+        ax = fig.add_subplot(1, n_metrics, i + 1)
+        sc = ax.scatter(*parameter_values.T, c=m, cmap=plt.cm.plasma_r)
+        cbar = plt.colorbar(sc)
+        cbar.set_label(metric_names[i])
+        ax.set_xlabel(parameters[0])
+        ax.set_ylabel(parameters[1])
+    fig.tight_layout()
+    fig.savefig(outdir + "metrics_posterior.png")
