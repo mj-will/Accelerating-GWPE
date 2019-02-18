@@ -13,22 +13,22 @@ from gwfa import utils
 
 class FunctionApproximator(object):
 
-    def __init__(self, n_inputs=None, parameter_names=None, json_file=None, attr_dict=None, verbose=1):
+    def __init__(self, input_shape=None, parameter_names=None, json_file=None, attr_dict=None, verbose=1):
         if json_file is not None and attr_dict is not None:
             raise ValueError("Provided both json file and attribute dict, use one or other")
         elif json_file is not None:
             self.verbose=verbose
-            # make sure n_inputs is a list
+            # make sure input_shape is a list
             # also determine whether to split inputs or not
-            if type(n_inputs) == int:
+            if type(input_shape) == int:
                 self.split = False
-                self.n_inputs = [n_inputs]
+                self.input_shape = [input_shape]
             else:
-                if len(n_inputs) > 1:
+                if len(input_shape) > 1:
                     self.split = True
                 else:
                     self.split = False
-                self.n_inputs = n_inputs
+                self.input_shape = input_shape
             self.compiled = False
             self.model = None
             self._count = 0
@@ -51,7 +51,7 @@ class FunctionApproximator(object):
     @property
     def _n_parameters(self):
         """Return the number of input parameters"""
-        return sum(self.n_inputs)
+        return sum(self.input_shape)
 
     def setup_from_attr_dict(self, attr_dict):
         """Set up the approximator from a dictionary of attributes"""
@@ -59,7 +59,7 @@ class FunctionApproximator(object):
             d = six.moves.cPickle.load(f, encoding='latin1')
         for key, value in six.iteritems(d):
             setattr(self, key, value)
-        self.model = utils.network.network(self.n_inputs, self.parameters, self.verbose)
+        self.model = utils.network.network(self.input_shape, self.parameters, self.verbose)
         self._compile_network()
 
     def setup_from_json(self, json_file):
@@ -71,7 +71,7 @@ class FunctionApproximator(object):
             self._setup_directories()
             shutil.copy(json_file, self.tmp_outdir)
             # setup network
-            self.model = utils.network.network(self.n_inputs, self.parameters, self.verbose)
+            self.model = utils.network.network(self.input_shape, self.parameters, self.verbose)
             self._compile_network()
             self._start_time = time.strftime('%b-%d-%Y_%H%M', time.localtime())
             self.data_all = {}
@@ -93,7 +93,7 @@ class FunctionApproximator(object):
         """Setup the loss function and compile the model"""
         if self.parameters["loss"] == "KL":
             print("KL divergence")
-            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=utils.network.KL, metrics=["mse"])
+            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=utils.network.KL, metrics=["mse", utils.network.KL, utils.network.JSD])
         else:
             print("Using " + self.parameters["loss"])
             self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=self.parameters["loss"], metrics=[utils.network.KL, utils.network.JSD])
@@ -133,7 +133,7 @@ class FunctionApproximator(object):
         if self.split:
             x_split = []
             m = 0
-            for n in self.n_inputs:
+            for n in self.input_shape:
                 x_split.append(x[:, m:m + n])
                 m = n
         else:
@@ -233,11 +233,11 @@ class FunctionApproximator(object):
         self._run_path = run_path
         return run_path
 
-    def save_results(self, save=False):
+    def save_results(self, fname="results.h5", save=True):
         """Save the results from the complete training process and move to final save directory"""
         if self.parameters["save"] or save:
             self.run_outdir = self._make_run_dir()
-            deepdish.io.save(self.run_outdir + "results.h5", self.data_all)
+            deepdish.io.save(self.run_outdir + fname, self.data_all)
             utils.copytree(self.tmp_outdir, self.run_outdir)
             # empty current dir
             for f in os.listdir(self.tmp_outdir):
