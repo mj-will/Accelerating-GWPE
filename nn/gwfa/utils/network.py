@@ -48,12 +48,12 @@ def network(n_inputs, parameters, verbose=1):
             raise ValueError("Must specifiy number of inputs")
 
     n_neurons = parameters["neurons"]
-    n_mixed_neurons = parameters["mixed neurons"]
+    n_mixed_neurons = parameters["mixed_neurons"]
     n_layers = parameters["layers"]
-    n_mixed_layers = parameters["mixed layers"]
+    n_mixed_layers = parameters["mixed_layers"]
     dropout_rate = parameters["dropout"]
-    mixed_dropout_rate = parameters["mixed dropout"]
-    batch_norm = parameters["batch norm"]
+    mixed_dropout_rate = parameters["mixed_dropout"]
+    batch_norm = parameters["batch_norm"]
     activation = parameters["activation"]
     regularization = parameters["regularization"]
 
