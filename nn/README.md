@@ -1,18 +1,24 @@
 # Running the function approximator
 
+## Import function approximator
+
+```
+from gwfa.function_approximator import FunctionApproximator
+```
+
 ## Initialising the approximator
 
-To intialise the approximator need a ```.json``` file that contains the network configuration. It should look something like this:
+To intialise the approximator need a `.json` file that contains the network configuration. It should look something like this:
 
 ```
 {
-     "layers": 10,
-     "mixed layers": 0,
-     "neurons": 300,
-     "mixed neurons": 100,
+     "layers": 8,
+     "mixed_layers": 0,
+     "neurons": 500,
+     "mixed_neurons": 100,
      "activation": "elu",
      "dropout": 0.0,
-     "mixed dropout": 0.0,
+     "mixed_dropout": 0.0,
      "batch norm": false,
      "regularization": false,
      "lambda": 0.0001,
@@ -22,20 +28,19 @@ To intialise the approximator need a ```.json``` file that contains the network 
      "epochs": 500,
      "patience": 50,
      "loss": "mean_squared_error",
-     "block size": 10000,
+     "block_size": 10000,
      "blocks": "all",
      "accumulate": "all",
-     "notes": "this is a note",
+     "notes": "no input split",
      "save": true,
-     "save model": true,
      "datapath": "./data/iota_psi_dist_marg/",
      "outdir": "./outdir/iota_psi_dist_marg/"
  }
 ```
 
-You also need to specify ```input_shape```. This detemines whether the network will split the parameters and have seperate blocks of neurons or simply use a single block. The function expects an ```int``` or list of ints.
+You also need to specify `input_shape`. This detemines whether the network will split the parameters and have seperate blocks of neurons or simply use a single block. The function expects an `int` or list of ints.
 
-Optionally, you can specifiy the names of parameters (```parameter_names```). This is recommened as they will be used for plotting and aid in understanding the output.
+Optionally, you can specifiy the names of parameters (`parameter_names`). This is recommened as they will be used for plotting and aid in understanding the output.
 
 ```
 FA = FunctionApproximator(input_shape=input_shape, json_file=json_file, parameter_names=parameter_names)
@@ -48,7 +53,7 @@ The function approximator uses the range of the prior values to normalise inputs
 ```
 FA.setup_normalisation(priors)
 ```
-where ```priors``` is an array of the prior values.
+where `priors` is an array of the prior values.
 
 ## Training the approximator
 
@@ -58,7 +63,7 @@ To train the approximator, simply use:
 FA.train_on_data(x, y, accumulate=True, plot=False)
 ```
 
-where ```x``` is an array of sample points, ```y``` is the target loglikelihood values, ```accumulate``` is a boolean that enables or disables data accumulation and ```plot``` enables or disables plotting. Plotting slightly slows down the training process but can help in understanding the networks performance.
+where `x` is an array of sample points, `y` is the target loglikelihood values, `accumulate` is a boolean that enables or disables data accumulation and `plot` enables or disables plotting. Plotting slightly slows down the training process but can help in understanding the networks performance.
 
 ## Saving the results and approximator
 
@@ -69,8 +74,8 @@ FA.save_results()
 ```
 
 This has two optional arguments:
-* ```fname```: (string) name of saved file, default: ```results.h5```
-* ```save```: (bool) force save even if false in the .json config file
+* `fname`: (string) name of saved file, default: `results.h5`
+* `save`: (bool) force save even if false in the .json config file
 
 To save the approximator use:
 
