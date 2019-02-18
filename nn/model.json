@@ -18,8 +18,9 @@
     "block_size": 10000,
     "blocks": "all",
     "accumulate": "all",
+    "split": false,
     "notes": "no split",
     "save": true,
-    "datapath": "./data/all_extrinsic/",
-    "outdir": "./outdir/all_extrinsic/"
+    "datapath": "./data/iota_psi_dist_m1_m2_marg_phase/",
+    "outdir": "./outdir/iota_psi_dist_m1_m2_marg_phase/"
 }
