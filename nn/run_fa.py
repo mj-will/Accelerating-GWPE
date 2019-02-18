@@ -24,11 +24,16 @@ def main():
     priors_in, priors_ex = data.split_parameters()
     n_extrinsic = np.shape(priors_ex)[-1]
     n_intrinsic = np.shape(priors_in)[-1]
-    n_inputs = [n_extrinsic, n_intrinsic]
+    if n_intrinsic == 0:
+        n_inputs = [n_extrinsic]
+    elif n_extrinsic == 0:
+        n_inputs = [n_intrinsic]
+    else:
+        n_inputs = sum([n_extrinsic, n_intrinsic])
     FA = FunctionApproximator(n_inputs, json_file=model_path, parameter_names=data.parameters)
     priors = np.concatenate([priors_ex, priors_in], axis=-1)
     FA.setup_normalisation(priors)
-    data.prep_data_chain(block_size=params["block size"], norm_logL=False, norm_intrinsic=False, norm_extrinsic=False)
+    data.prep_data_chain(block_size=params["block_size"], norm_logL=False, norm_intrinsic=False, norm_extrinsic=False)
     if params["blocks"] == "all":
         blocks_2_train = range(1, data.N_blocks)
     else:
