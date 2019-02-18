@@ -27,7 +27,7 @@ def update_model(params, model_path='auto_model.json'):
 
 def main():
     # parameters to test
-    parameters = {'neurons': [600, 750, 900, 1050, 1200], 'layers': [1,2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 15, 18, 21, 24, 27, 30]}
+    parameters = {'neurons': [50, 100, 250, 500, 750], 'layers': [4, 6, 8, 10, 12]}
     model_path = 'auto_model.json'
     for n in parameters['neurons']:
         for l in parameters['layers']:
@@ -36,7 +36,7 @@ def main():
             update_model(d, model_path)
             print('Running nn for {} neurons - {} layers'.format(n, l))
             # run model
-            os.system('python nn.py ' +  model_path)
+            os.system('python run_fa.py ' +  model_path)
 
 if __name__ == '__main__':
     main()
