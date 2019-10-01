@@ -41,7 +41,7 @@ class Data(object):
     @property
     def _intrinsic_parameters(self):
         """Return a list on intrinsic parameters"""
-        return list(['m1', 'm2', 'a_1', 'a_2', 'tilt_1', 'tilt_2', 'phi_12', 'phi_jli', 'mass_1', 'mass_2'])
+        return list(['m1', 'm2', 'a_1', 'a_2', 'tilt_1', 'tilt_2', 'phi_12', 'phi_jl', 'mass_1', 'mass_2'])
 
     @property
     def _header_list(self):
@@ -125,5 +125,6 @@ class Data(object):
                 self.extrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.extrinsic_parameters)[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
             else:
                 self.extrinsic_parameters = self.extrinsic_parameters[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
+        # if the print out has a zero this indicates the absence of said type of parameters
         print('X shape:', self.intrinsic_parameters.shape, self.extrinsic_parameters.shape)
         print('Y shape:', self.logL.shape)
