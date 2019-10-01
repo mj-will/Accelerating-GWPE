@@ -2,6 +2,31 @@
 import shutil
 import os
 
+def set_keras_device(device="GPU0", gpu_fraction=0.3):
+    # get type of device: CPU or GPU
+    device_type = device.rstrip("0123456789")
+    import tensorflow as tf
+    os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+    import keras.backend as K
+    if device_type == "GPU" or device_type == "gpu":
+        # if no gpu is specified will use 0
+        if device_type is not device:
+            device_number = device[len(device_type)]
+        else:
+            device_number = "0"
+        # set available gpu
+        os.environ["CUDA_VISIBLE_DEVICES"] = device_number
+        print("Setting up Keras to use GPU with miminal memory on {}".format(device_number))
+        config = tf.ConfigProto()
+        config.gpu_options.allow_growth = True
+        config.gpu_options.per_process_gpu_memory_fraction = gpu_fraction
+    elif device_type == "CPU" or device_type == "cpu":
+        print("Setting up Keras to use CPU")
+        config = tf.ConfigProto(device_count = {"GPU": 0})
+    # set up session
+    K.tensorflow_backend.set_session(tf.Session(config=config))
+    sess = tf.Session(config=config)
+
 def fuzz():
     """Fuzz factor to avoid NaNs"""
     return 1e-6

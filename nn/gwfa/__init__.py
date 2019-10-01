@@ -1,17 +1,11 @@
 
 from __future__ import print_function
 
+from gwfa.utils import set_keras_device
+# set up the device to use
+# by default this is the gpu
+# but can be set to cpu as well
+set_keras_device()
+
 from gwfa import function_approximator
 from gwfa import data
-
-import tensorflow as tf
-import keras.backend as K
-
-# TensorFlow wizardry
-config = tf.ConfigProto()
-# Don't pre-allocate memory; allocate as-needed
-config.gpu_options.allow_growth = True
-# Only allow a total of half the GPU memory to be allocated
-config.gpu_options.per_process_gpu_memory_fraction = 0.5
-# Create a session with the above options specified.
-K.tensorflow_backend.set_session(tf.Session(config=config))
