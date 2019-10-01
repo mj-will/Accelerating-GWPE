@@ -12,21 +12,21 @@ from keras import regularizers
 
 def KL(y_true, y_pred):
     """Return kullback-Leibler divergence"""
-    y_true = tf.exp(tf.cast(y_true, dtype=tf.float64))
-    y_pred = tf.exp(tf.cast(y_pred, dtype=tf.float64))
-    P = (y_true / tf.reduce_sum(y_true)) + K.epsilon()
-    Q = y_pred / tf.reduce_sum(y_pred) + K.epsilon()
-    return tf.reduce_sum(P * tf.log(P / Q))
+    y_true = K.exp(y_true)
+    y_pred = K.exp(y_pred)
+    P = (y_true / K.sum(y_true)) + K.epsilon()
+    Q = y_pred / K.sum(y_pred) + K.epsilon()
+    return K.sum(P * K.log(P / Q))
 
 def JSD(y_true, y_pred):
     """Compute the Jenson-Shannon divergence"""
-    y_true = tf.exp(tf.cast(y_true, dtype=tf.float64))
-    y_pred = tf.exp(tf.cast(y_pred, dtype=tf.float64))
-    P = (y_true / tf.reduce_sum(y_true)) + K.epsilon()
-    Q = y_pred / tf.reduce_sum(y_pred) + K.epsilon()
-    const = tf.constant(0.5, dtype=tf.float64)
+    y_pred = K.exp(y_pred)
+    y_true = K.exp(y_true)
+    P = (y_true / K.sum(y_true)) + K.epsilon()
+    Q = y_pred / K.sum(y_pred) + K.epsilon()
+    const = K.constant(0.5)
     M = const * (P + Q)
-    return const * tf.reduce_sum(P * tf.log(P / M)) + const * tf.reduce_sum(Q * tf.log(Q / M))
+    return const * K.sum(P * K.log(P / M)) + const * K.sum(Q * K.log(Q / M))
 
 def get_parameters_from_json(model_path, verbose=1):
     """Get the parameters for the nn from the model.json file"""
@@ -48,12 +48,24 @@ def network(n_inputs, parameters, verbose=1):
             raise ValueError("Must specifiy number of inputs")
 
     n_neurons = parameters["neurons"]
-    n_mixed_neurons = parameters["mixed_neurons"]
+    try:
+        n_mixed_neurons = parameters["mixed_neurons"]
+    except:
+        n_mixed_neurons = parameters["mixed neurons"]
     n_layers = parameters["layers"]
-    n_mixed_layers = parameters["mixed_layers"]
+    try:
+        n_mixed_layers = parameters["mixed_layers"]
+    except:
+        n_mixed_layers = parameters["mixed layers"]
     dropout_rate = parameters["dropout"]
-    mixed_dropout_rate = parameters["mixed_dropout"]
-    batch_norm = parameters["batch_norm"]
+    try:
+        mixed_dropout_rate = parameters["mixed_dropout"]
+    except:
+        mixed_dropout_rate = parameters["mixed dropout"]
+    try:
+        batch_norm = parameters["batch_norm"]
+    except:
+        batch_norm = parameters["batch norm"]
     activation = parameters["activation"]
     regularization = parameters["regularization"]
 
@@ -91,7 +103,7 @@ def network(n_inputs, parameters, verbose=1):
             if dropout_rate:
                 layer = Dropout(dropout_rate)(layer)
             if batch_norm:
-                layer = BatchNormalization(layer)
+                layer = BatchNormalization()(layer)
         block_outputs.append(layer)
     if len(block_outputs) > 1:
         layer = concatenate(block_outputs, name="concat_blocks")
