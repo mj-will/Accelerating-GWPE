@@ -39,6 +39,7 @@ class FunctionApproximator(object):
                 self.parameter_names = parameter_names
             self.setup_from_json(json_file)
         elif attr_dict is not None:
+            self.n_inputs=False
             self.verbose=verbose
             self.setup_from_attr_dict(attr_dict)
         else:
@@ -59,6 +60,8 @@ class FunctionApproximator(object):
             d = six.moves.cPickle.load(f, encoding='latin1')
         for key, value in six.iteritems(d):
             setattr(self, key, value)
+        if self.n_inputs:
+            self.input_shape = self.n_inputs
         self.model = utils.network.network(self.input_shape, self.parameters, self.verbose)
         self._compile_network()
 
@@ -82,7 +85,10 @@ class FunctionApproximator(object):
         """Setup final output directory and a temporary directory for use during training"""
         if not os.path.exists(self.outdir):
             os.mkdir(self.outdir)
-        self.tmp_outdir = './current_run/'
+        try:
+            self.tmp_outdir = self.parameters["tmpdir"]
+        except:
+            self.tmp_outdir = './current_run/'
         # directory may still exist from previous runs that did not terminate properly
         # delete to prevents results from getting mixed up
         if os.path.exists(self.tmp_outdir):
@@ -91,9 +97,12 @@ class FunctionApproximator(object):
 
     def _compile_network(self):
         """Setup the loss function and compile the model"""
-        if self.parameters["loss"] == "KL":
+        if self.parameters["loss"] in ("KL","kl"):
             print("KL divergence")
             self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=utils.network.KL, metrics=["mse", utils.network.KL, utils.network.JSD])
+        elif self.parameters["loss"] in ("JSD", "jsd", "JS", "js"):
+            print("Using JSD divergence")
+            self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=utils.network.JSD, metrics=["mse", utils.network.KL, utils.network.JSD])
         else:
             print("Using " + self.parameters["loss"])
             self.model.compile(Adam(lr=self.parameters["learning_rate"], decay=self.parameters["lr_decay"]), loss=self.parameters["loss"], metrics=[utils.network.KL, utils.network.JSD])
@@ -140,7 +149,7 @@ class FunctionApproximator(object):
             x_split = x
         return x_split
 
-    def train_on_data(self, x, y, split=0.8, accumulate=False, plot=False):
+    def train_on_data(self, x, y, split=0.8, accumulate=False, plot=False, max_training_data=None, enable_tensorboard=False):
         """
         Train on provided data
 
@@ -178,6 +187,13 @@ class FunctionApproximator(object):
                 self._accumulated_data = (acc_x, acc_y)
             else:
                 raise ValueError("Unknown data type to accumulate: {}. Choose from: 'val', 'train' or 'all'".format(accumulate))
+        # if maximum number of training samples is set, use a subset
+        n_train = self.x_train.shape[0]
+        if max_training_data is not None and n_train > max_training_data:
+            print("Using random subset of data")
+            idx = np.random.permutation(range(n_train))[:max_training_data]
+            self.x_train = self.x_train[idx]
+            self.y_train = self.y_train[idx]
 
         callbacks = []
         if self.parameters["patience"]:
@@ -185,11 +201,12 @@ class FunctionApproximator(object):
         # save best model during traing
         self.weights_file = block_outdir + "model_weights.h5"
         checkpoint = ModelCheckpoint(self.weights_file, verbose=0, monitor="val_loss", save_best_only=True, mode="auto")
-        tensorboard = TensorBoard(log_dir="./logs/run_start_{}/block{}".format(self._start_time, self._count), histogram_freq=10, batch_size=self.parameters["batch_size"])
-        callbacks.append(tensorboard)
+        if enable_tensorboard:
+            tensorboard = TensorBoard(log_dir="./logs/run_start_{}/block{}".format(self._start_time, self._count), batch_size=self.parameters["batch_size"])
+            callbacks.append(tensorboard)
         callbacks.append(checkpoint)
         # more callbacks can be added by appending to callbacks
-        history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=2, callbacks=callbacks, **self._training_parameters)
+        history = self.model.fit(x=self.x_train, y=self.y_train, validation_data=(self.x_val, self.y_val), verbose=self.verbose, callbacks=callbacks, **self._training_parameters)
         y_train_pred = self.model.predict(self.x_train)
         # load weights from best epoch
         self.model.load_weights(self.weights_file)
