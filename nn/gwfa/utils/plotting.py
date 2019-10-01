@@ -15,6 +15,8 @@ import matplotlib.pyplot as plt
 from matplotlib.ticker import FormatStrFormatter
 import seaborn as sns
 plt.style.use("seaborn")
+sns.set()
+sns.set_style("ticks")
 
 from gwfa.utils import metrics
 
@@ -122,49 +124,184 @@ def make_plots(outdir, x_val=None, y_val=None, y_pred=None, y_train=None, y_trai
         plt.close(fig)
     if not check_any_none([x_val, y_val, y_pred]) and scatter:
         # scatter of error on logL
-        make_scatter(x_val, y_val, y_pred, outdir=outdir, parameters=parameters)
+        corner_scatter(x_val, y_val, y_pred, outdir=outdir, parameters=parameters)
 
-def make_scatter(x, y_true, y_pred, outdir='', parameters=None, fname="scatter.png"):
+def corner_scatter(x, y_true, y_pred, outdir='', parameters=None, fname="scatter.png", mkdir=False, save=True, labels_dict=None):
     """
     Make a set of scatter plots for each pair of parameters
     """
     if not os.path.isdir(outdir):
-        raise ValueError("Output directory does not exist")
+        if mkdir and save:
+            os.mkdir(outdir)
+        else:
+            raise ValueError("Output directory does not exist")
     print("Making scatter plot...")
     # scatter of error on logL
     N_params = np.shape(x)[-1]
     error = (y_true - y_pred)
     max_error = np.max(np.abs(error))
-    fig, axes = plt.subplots(N_params, N_params, figsize=[18, 15])
-    for i in range(N_params):
-        for j in range(N_params):
+    fig, axes = plt.subplots(N_params-1, N_params-1, figsize=[15, 18])
+    for i in range(N_params-1):
+        for j in range(N_params-1):
             ax = axes[i, j]
-            if j < i:
-                idx = [j, i]
+            if j <= i:
+                idx = [j, i+1]
                 sp = x[:, idx].T
-                sc = ax.scatter(*sp, c=error, vmin=-max_error, vmax=max_error, marker=".", cmap=plt.cm.RdBu_r)
-                # add labels if possible
-            elif j == i:
-                h = x[:, j].T
-                ax.hist(h, density=True, alpha=0.5, color="firebrick")
+                sc = ax.scatter(*sp, c=error, vmin=-max_error, vmax=max_error, marker=".", cmap=plt.cm.RdYlBu_r)
+                ax.xaxis.set_ticks_position("both")
+                ax.yaxis.set_ticks_position("both")
+            #elif j == i:
+                #h = x[:, j].T
+                #ax.hist(h, density=True, alpha=0.5, color="firebrick",histtype="stepfilled")
+                #ax.xaxis.set_ticks_position("both")
+                #ax.yaxis.set_ticks_position("both")
+                #ax.set_yticklabels([])
 
             else:
                 ax.set_axis_off()
-            if  (i + 1) < N_params:
+
+            if  (i + 2) < N_params:
                 ax.get_shared_x_axes().join(ax, axes[i, 0])
                 ax.set_xticklabels([])
+            else:
+                xmin, xmax = ax.get_xlim()
+                #ax.set_xticks([xmin, xmax])
+                #ax.set_xticklabels(["{:.2}".format(xmin), "{:.2}".format(xmax)], rotation=45)
+                if parameters is not None:
+                    if labels_dict is not None:
+                        ax.set_xlabel(labels_dict[parameters[j]])
+                    else:
+                        ax.set_xlabel(parameters[j])
             if j > 0:
                 ax.get_shared_y_axes().join(ax, axes[0, j])
                 ax.set_yticklabels([])
-            if parameters is not None:
-                if (i + 1) == N_params:
-                    ax.set_xlabel(parameters[j])
-                if j == 0 and i != 0:
-                    ax.set_ylabel(parameters[i])
-    cbar = fig.colorbar(sc, ax=axes.ravel().tolist(), shrink=0.5)
-    cbar.set_label("Error logL", rotation=270)
-    fig.savefig(outdir + fname, dpi=400, bbox_inches="tight")
+            else:
+                ymin, ymax = ax.get_ylim()
+                #ax.set_yticks([ymin, ymax])
+                #ax.set_yticklabels(["{:.2}".format(ymin), "{:.2}".format(ymax)], rotation=45)
+                if parameters is not None:
+                    if labels_dict is not None:
+                        ax.set_ylabel(labels_dict[parameters[i+1]])
+                    else:
+                        ax.set_ylabel(parameters[i])
+    fig.tight_layout()
+    #fig.subplots_adjust(wspace=0.1, hspace=0.1)
+    cax,kw = mpl.colorbar.make_axes([ax for ax in axes.flat], location="bottom", shrink=0.5, pad=0.09)
+    cbar = plt.colorbar(sc, cax=cax, **kw)
+    cbar.ax.set_title("Prediction error", )
+    if save:
+        fig.savefig(outdir + fname, dpi=400, bbox_inches="tight")
     plt.close(fig)
+    return fig
+
+def grid_scatter(x, y_true, y_pred, outdir='', parameters=None, fname="scatter.png", mkdir=False, labels_dict=None):
+    """
+    Make a set of scatter plots for each pair of parameters
+
+    """
+    if not os.path.isdir(outdir):
+        if mkdir:
+            os.mkdir(outdir)
+        else:
+            print(outdir)
+            raise ValueError("Output directory does not exist")
+    inputs = [x, y_true, y_pred]
+    input_types = []
+    for i in inputs:
+        if type(i) == list:
+            if len(i) == 1:
+                i = i[0]
+                input_types.append("array")
+            elif len(i) > 2:
+                raise ValueError("Too arrays in one of the inputs")
+            else:
+                input_types.append("list")
+        elif isinstance(i, np.ndarray):
+            input_types.append("array")
+    # make sure inputs are all the same type
+    if not len(set(input_types)) == 1:
+        raise ValueError("Inputs are a mix of arrays and lists")
+    else:
+        if input_types[0] == "array":
+            fig = corner_scatter(*inputs, outdir=outdir, parameters=parameters, fname=fname, mkdir=mkdir, save=False, labels_dict=get_labels_dict())
+
+            fig.savefig(outdir + fname, dpi=400, bbox_inches="tight")
+            plt.close(fig)
+        else:
+            N_params = np.shape(x[0])[-1]
+            error = [(t - p) for t, p in zip(y_true, y_pred)]
+            max_error = [np.max(np.abs(e), axis=0) for e in error]
+            legend_handles = []
+            fig, axes = plt.subplots(N_params, N_params, figsize=[18, 15])
+            for i in range(N_params):
+                for j in range(N_params):
+                    ax = axes[i, j]
+                    if j < i:# or j > i:
+                        idx = [j, i]
+                        if j < i:
+                            sp = x[0][:, idx].T
+                            sc = ax.scatter(*sp, c=error[0], vmin=-max_error[0], vmax=max_error[0], marker=".", cmap=plt.cm.RdBu_r)
+                        else:
+                            pass
+                            for d, c in zip(x, ["blue", "red"]):
+                                points = d[:, idx].T
+                                #sc = ax.plot(*points, alpha=0.2, marker='.', linestyle='', markersize=4.0)
+                                counts, xbins, ybins=np.histogram2d(*points)
+                                ct = ax.contour(counts.T, extent=[xbins.min(),xbins.max(), ybins.min(),ybins.max()], alpha=0.5, colors=c)
+                        ax.xaxis.set_ticks_position("both")
+                        ax.yaxis.set_ticks_position("both")
+                    elif j == i:
+                        handles = []
+                        for e in x:
+                            h = e[:, j].T
+                            hist = ax.hist(h, density=True, alpha=0.5, histtype="stepfilled")
+                            ax.xaxis.set_ticks_position("both")
+                            ax.yaxis.set_ticks_position("both")
+                            ax.set_yticklabels([])
+                        legend_handles.append(handles)
+                    else:
+                        ax.set_axis_off()
+                    if not j == i:
+                        if  (i + 1) < N_params:
+                            ax.get_shared_x_axes().join(ax, axes[i, 0])
+                            if i == 0:
+                                ax.xaxis.tick_top()
+                                ax.xaxis.set_ticks_position("both")
+                            else:
+                                ax.set_xticklabels([])
+                        if j > 0:
+                            ax.get_shared_y_axes().join(ax, axes[0, j])
+                            if (j + 1) == N_params and (i + 1) != (N_params):
+                                ax.yaxis.tick_right()
+                                ax.yaxis.set_ticks_position("both")
+                            else:
+                                ax.set_yticklabels([])
+                    if parameters is not None:
+                        if labels_dict is not None:
+                            if (i + 1) == N_params:
+                                ax.set_xlabel(labels_dict[parameters[j]])
+                            if j == 0 and not i == 0:
+                                ax.set_ylabel(labels_dict[parameters[i]])
+                        else:
+                            if (i + 1) == N_params:
+                                ax.set_xlabel(parameters[j])
+                            elif i == 0:
+                                #ax.xaxis.set_label_position("top")
+                                #ax.set_xlabel(parameters[j])
+                                pass
+                            if j == 0 and i != 0:
+                                ax.set_ylabel(parameters[i])
+                            elif (j + 1) == N_params and (i + 1) != N_params:
+                                ax.yaxis.set_label_position("right")
+                                ax.set_ylabel(parameters[i])
+            plt.tight_layout()
+            #fig.subplots_adjust(wspace=0.1, hspace=0.1)
+            cax,kw = mpl.colorbar.make_axes([ax for ax in axes.flat], location="left", shrink=0.5)
+            cbar = plt.colorbar(sc, cax=cax, **kw)
+            cbar.set_label("Prediction error")
+            #lgd = fig.legend(legend_handles[0], ["Posterior samples", "Training samples"])
+            fig.savefig(outdir + fname, dpi=400, bbox_inches="tight")
+            plt.close(fig)
 
 def read_results(results_path, fname, blocks="all", concat=True, dd=True):
     """
@@ -179,13 +316,14 @@ def read_results(results_path, fname, blocks="all", concat=True, dd=True):
     # need data in order is was added
     d = OrderedDict()
     if blocks == "all":
-        blocks = ["block{}".format(b) for b in range(1, len(hf.keys()) + 1)]
+        blocks = ["block{}".format(b) for b in range(0, len(hf.keys()))]
     elif blocks == "last":
         blocks = ["block" +  str(len(hf.keys()) - 1)]
     else:
         blocks = ["block{}".format(b) for b in blocks]
     # blocks must be in order for loss plots
     block_keys = sorted(hf.keys(), key=lambda s: int(s.split("block")[-1]))
+    block_keys_used = []
     for block_key in block_keys:
         if block_key in blocks:
             for key in hf[block_key].keys():
@@ -193,6 +331,7 @@ def read_results(results_path, fname, blocks="all", concat=True, dd=True):
                     d[key] = [hf[block_key][key][:]]
                 else:
                     d[key].append(hf[block_key][key][:])
+            block_keys_used.append(block_key)
     # concatenate all the blocks together
     if concat:
         for key, value in six.iteritems(d):
@@ -214,6 +353,7 @@ def get_weights(results_path, weights_fname="model_weights.h5", blocks="all"):
         weights_files: List of paths to weights files
     """
     run_blocks_unsrt = filter(os.path.isdir, [results_path + i for i in os.listdir(results_path)])
+    run_blocks_unsrt = filter(lambda s: "block" in s, run_blocks_unsrt)
     run_blocks = sorted(run_blocks_unsrt, key=lambda s: int(s.split("block")[-1]))
     if blocks is "all":
         pass
@@ -436,7 +576,51 @@ def compare_to_posterior(posterior_samples, posterior_values, preds, additional_
             metrics_dict[name] = f(posterior_values, preds)
     return metrics_dict
 
-def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="results.h5", plots=True, additional_metrics=None, scatter=True, blocks="all"):
+def get_labels_dict():
+    """Return a dictionary of labels to use for plots"""
+    labels_dict = {"mass_1": r"$m_1$",
+            "mass_2": r"$m_2$",
+            "psi": r"$\psi$",
+            "iota": r"$\iota$",
+            "luminosity_distance": r"$d_{\text{L}}$",
+            "ra": r"$\alpha$",
+            "dec": r"$\delta$",
+            "geocent_time": r"$t_{\text{c}}$",
+            "tilt_1": r"$t_{1}$",
+            "tilt_2": r"$t_{2}$",
+            "a_1" : r"$a_{1}$",
+            "a_2" : r"$a_{2}$",
+            "phi_12": r"$\phi_{12}$",
+            "phi_jl": r"$\phi_{\text{jl}}$"
+            }
+    return labels_dict
+
+def hist_posterior(posterior_samples, x, outdir="./", parameters=None, labels_dict=None, density=False):
+    """Plot a series of histograms showing how the training data varies to the posterior"""
+    N = np.shape(x)[-1]
+    fig, axs = plt.subplots(1,N, figsize=(24,4), sharey=True)
+    axs = axs.ravel()
+    n_max = np.shape(posterior_samples)[0]
+    data_idx = np.random.permutation(range(np.shape(x)[0]))[:n_max]
+    x1 = x[data_idx, :]
+    x2 = posterior_samples
+    for i in range(N):
+        ax = axs[i]
+        ax.hist(x1[:,i], 10, density=density, alpha=0.7,histtype="step", range=(0,1), hatch="-", linewidth=3.)
+        ax.hist(x2[:,i], 10, density=density, alpha=0.7,histtype="step", range=(0,1), hatch="/", linewidth=3.)
+        #ax.set_yscale("log")
+        if parameters is not None:
+            if labels_dict is not None:
+                ax.set_xlabel(labels_dict[parameters[i]])
+            else:
+                ax.set_xlabel(parameters[i])
+        #ax.set_yticklabels([])
+        ax.set_xticks([0., 0.5, 1.0])
+        axs[0].set_ylabel("Counts")
+        ax.minorticks_on()
+    fig.savefig(outdir + "data_hist.pdf", bbox_inches="tight")
+
+def compare_run_to_posterior(run_path, sampling_results, use_training_results=False, outdir=None, fname="results.h5", plots=True, additional_metrics=None, scatter=True, blocks="all"):
     """
     Load a weights for model and compare the predicted values to the true posterior
 
@@ -473,6 +657,9 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
     # get an ordered list of weights files
     weights_files = get_weights(run_path, weights_fname="model_weights.h5", blocks=blocks)
     data = []
+    # load results from training if path provided:
+    #if use_training_results:
+    training_results = read_results(run_path, fname="results.h5", blocks=blocks, concat=False)
     for c, wf in enumerate(weights_files):
         print("Loading weights from: " +  wf)
         FA.load_weights(wf)
@@ -481,8 +668,17 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
         m = compare_to_posterior(posterior_samples, posterior_values, preds, additional_metrics)
         # scatter is slow to plot
         if scatter and plots:
+            if use_training_results:
+                x = [normalised_samples, training_results["x_val"][c]]
+                y_true = [posterior_values, training_results["y_val"][c]]
+                y_pred = [preds, training_results["y_pred"][c]]
+            else:
+                x = normalised_samples
+                y_true = posterior_values
+                y_pred = preds
             # make a scatter plot for the network after each block
-            make_scatter(normalised_samples, posterior_values, preds, outdir=outdir + "block{}/".format(c), parameters=parameters, fname="scatter_posterior.png")
+            #grid_scatter(x, y_true, y_pred, outdir=outdir + "block{}/".format(c), parameters=parameters, fname="scatter_posterior.png", mkdir=True, labels_dict=get_labels_dict())
+            hist_posterior(normalised_samples, training_results["x_val"][c], outdir=outdir+"block{}/".format(c), parameters=parameters, labels_dict=get_labels_dict())
         data.append((preds, m))
 
     if plots:
@@ -498,13 +694,27 @@ def compare_run_to_posterior(run_path, sampling_results, outdir=None, fname="res
             _, _, h1 = ax.hist(d[0], alpha=0.5, label="Predicted postreior", density=True)
             _, _, h2 = ax.hist(posterior_values, alpha=0.5, label="True posterior", density=True)
             ax.set_title("Block " + str(i))
-            ax.set_xlabel("logL")
+            ax.set_xlabel("loglikelihood")
             ax.legend((blank_legend_entry(), blank_legend_entry()), ("KLD: {:.3f}".format(d[1]["KL"]), "JSD: {:.3f}".format(d[1]["JS"])))
         h, l = ax.get_legend_handles_labels()
         lgd = hist_fig.legend(h, l, loc ="lower center", fontsize=14)
         hist_fig.tight_layout()
-        hist_fig.savefig(outdir + "hist.png", bbox_inches="tight")
+        hist_fig.savefig(outdir + "hist.pdf", bbox_inches="tight")
         plt.close(hist_fig)
+
+        # hist of last predictions
+        hfig = plt.figure(figsize=(10,8))
+        xmin = np.min([data[-1][0], posterior_values])
+        xmax = np.max([data[-1][0], posterior_values])
+        plt.hist(data[-1][0], 40, alpha=0.5, density=False,histtype="step", range=(xmin, xmax), hatch="-", linewidth=3.0)
+        plt.hist(posterior_values, 40, alpha=0.5, density=False,histtype="step", range=(xmin, xmax), hatch="/", linewidth=3.0)
+        plt.xlabel("Log-likelihood")
+        plt.ylabel("Counts")
+        plt.legend(["Predicted", "True"])
+        hfig.tight_layout()
+        hfig.savefig(outdir + "hist_final.pdf", bbox_inches="tight")
+
+
 
         metrics_fig = plt.figure(figsize=(12, 10))
         for i, m in enumerate(metrics_array):
@@ -527,14 +737,13 @@ def search_for_runs(path):
     runs_srt = sorted(runs, key=lambda s: int(s.split("run")[-1]))
     return runs_srt
 
-def compare_search_posterior(results_dir, sampling_results, outdir=None, fname="results.h5", parameters=["neurons", "layers"]):
+def compare_search_posterior(results_dir, sampling_results, outdir=None, fname="results.h5", parameters=["neurons", "layers"], force_metrics=None):
     """Compare the runs in directory using the posterior samples"""
     if outdir is None:
         outdir = results_dir
     if not os.path.isdir(outdir):
         raise ValueError("Output directory does not exist")
     runs = search_for_runs(results_dir)
-
     metrics = np.empty(len(runs), dtype=np.ndarray)
     metric_names = False
     parameter_values = np.empty([len(runs), len(parameters)])
@@ -548,12 +757,23 @@ def compare_search_posterior(results_dir, sampling_results, outdir=None, fname="
     metrics = np.vstack(metrics).T
     n_metrics = metrics.shape[0]
     fig = plt.figure(figsize=(20, 8))
+    cmap = mpl.cm.plasma_r(np.linspace(0,1,1000))
+    cmap = mpl.colors.ListedColormap(cmap[100:,:-1])
+    np.save("search_points.npy", parameter_values)
+    np.save("metrics.npy", metrics)
     for i, m in enumerate(metrics):
         ax = fig.add_subplot(1, n_metrics, i + 1)
-        sc = ax.scatter(*parameter_values.T, c=m, cmap=plt.cm.plasma_r)
+        sc = ax.scatter(*parameter_values.T, c=m, cmap=cmap, s=100)
         cbar = plt.colorbar(sc)
         cbar.set_label(metric_names[i])
-        ax.set_xlabel(parameters[0])
-        ax.set_ylabel(parameters[1])
+        #ax.set_xlabel(parameters[0])
+        ax.set_xlabel("Number of neurons")
+        #ax.set_yticks(np.unique(parameter_values[:,1]))
+        #ax.set_ylabel(parameters[1])
+        ax.set_ylabel("Number of layers")
+        #ax.set_xticks(np.unique(parameter_values.T[0, :]))
+        ax.grid(True)
+        ax.tick_params(axis='x', rotation=45)
+        ax.tick_params(axis='y', rotation=45)
     fig.tight_layout()
     fig.savefig(outdir + "metrics_posterior.png")
