@@ -12,30 +12,31 @@ To intialise the approximator need a `.json` file that contains the network conf
 
 ```
 {
-     "layers": 8,
-     "mixed_layers": 0,
-     "neurons": 500,
-     "mixed_neurons": 100,
-     "activation": "elu",
-     "dropout": 0.0,
-     "mixed_dropout": 0.0,
-     "batch norm": false,
-     "regularization": false,
-     "lambda": 0.0001,
-     "learning_rate": 0.001,
-     "lr_decay": 1e-3,
-     "batch_size": 100,
-     "epochs": 500,
-     "patience": 50,
-     "loss": "mean_squared_error",
-     "block_size": 10000,
-     "blocks": "all",
-     "accumulate": "all",
-     "notes": "no input split",
-     "save": true,
-     "datapath": "./data/iota_psi_dist_marg/",
-     "outdir": "./outdir/iota_psi_dist_marg/"
- }
+    "layers": 10,
+    "mixed_layers": 0,
+    "neurons": 300,
+    "mixed_neurons": 100,
+    "activation": "elu",
+    "dropout": 0.0,
+    "mixed_dropout": 0.0,
+    "batch_norm": false,
+    "regularization": false,
+    "lambda": 0.0001,
+    "learning_rate": 0.001,
+    "lr_decay": 1e-3,
+    "batch_size": 100,
+    "epochs": 500,
+    "patience": 50,
+    "loss": "mean_squared_error",
+    "block_size": 10000,
+    "blocks": "all",
+    "accumulate": "all",
+    "split": false,
+    "notes": "no split",
+    "save": true,
+    "datapath": "./data/iota_psi_dist_m1_m2_marg_phase/",
+    "outdir": "./outdir/iota_psi_dist_m1_m2_marg_phase/"
+}
 ```
 
 You also need to specify `input_shape`. This detemines whether the network will split the parameters and have seperate blocks of neurons or simply use a single block. The function expects an `int` or list of ints.
