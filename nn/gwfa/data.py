@@ -95,7 +95,6 @@ class Data(object):
         """
         Prep the data to emulate the output of a nested sampling algorithm
         """
-        self.block_size = block_size
         self.logL = np.nan_to_num(np.squeeze(self.df[['logL']].values))
         self.N_points = len(self.logL)
         self.intrinsic_parameters, self.extrinsic_parameters = self.split_parameters()
@@ -104,27 +103,31 @@ class Data(object):
         self.N_extrinsic = self.extrinsic_parameters.shape[-1]
         # split the data in fragments that are the block size
         # get number of blocks
+        if block_size is -1:
+            self.block_size = self.N_points
+        else:
+            self.block_size = block_size
         self.N_blocks = int(np.floor(self.N_points / self.block_size))
         print('Block size:', self.block_size)
         print('Number of blocks:', self.N_blocks)
-        diff = int(np.abs(self.N_blocks * block_size - self.N_points))
+        diff = int(np.abs(self.N_blocks * self.block_size - self.N_points))
         # drop inital values
         if norm_logL:
-            self.logL = np.apply_along_axis(self.normalize_logL, 0, self.logL)[:-diff].reshape(self.N_blocks, self.block_size)
+            self.logL = np.apply_along_axis(self.normalize_logL, 0, self.logL)[diff:].reshape(self.N_blocks, self.block_size)
         else:
-            self.logL = self.logL[:-diff].reshape(self.N_blocks, self.block_size)
+            self.logL = self.logL[diff:].reshape(self.N_blocks, self.block_size)
         # intrinsic
         if self.N_intrinsic:
             if norm_intrinsic:
-                self.intrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.intrinsic_parameters)[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
+                self.intrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.intrinsic_parameters)[diff:, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
             else:
-                self.intrinsic_parameters = self.intrinsic_parameters[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
+                self.intrinsic_parameters = self.intrinsic_parameters[diff:, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
         # extrinsic
         if self.N_extrinsic:
             if norm_extrinsic:
-                self.extrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.extrinsic_parameters)[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
+                self.extrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.extrinsic_parameters)[diff:, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
             else:
-                self.extrinsic_parameters = self.extrinsic_parameters[:-diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
+                self.extrinsic_parameters = self.extrinsic_parameters[diff:, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
         # if the print out has a zero this indicates the absence of said type of parameters
         print('X shape:', self.intrinsic_parameters.shape, self.extrinsic_parameters.shape)
         print('Y shape:', self.logL.shape)

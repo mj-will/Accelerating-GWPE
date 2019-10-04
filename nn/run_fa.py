@@ -45,13 +45,18 @@ def main():
     if params["blocks"] == "all":
         # avoid the first block with very large negative values of logL
         # -> start at 1
-        blocks_2_train = range(1, data.N_blocks)
+        if data.N_blocks == 1:
+            blocks_2_train = range(0, 1)
+        else:
+            blocks_2_train = range(1, data.N_blocks)
     else:
         blocks_2_train = params["blocks"]
     print("Training on blocks: ", blocks_2_train)
     # input data need not be split but I wrote it like this originally don't see the need to change it
     # could be useful later
     for x_in, x_ex, y, i in zip(data.intrinsic_parameters, data.extrinsic_parameters, data.logL, range(data.N_blocks)):
+        print(i)
+        print(blocks_2_train)
         if i in blocks_2_train:
             # make sure the input data isn't split
             if x_ex.any() and x_in.any():
@@ -60,7 +65,7 @@ def main():
                 x = x_ex
             elif x_in.any():
                 x = x_in
-            FA.train_on_data(x, y, accumulate=params["accumulate"], plot=True, max_training_data=None)
+            FA.train_on_data(x, y, accumulate=params["accumulate"], plot=True, max_training_data=None, enable_tensorboard=False)
     if params["save"]:
         FA.save_results()
         FA.save_approximator("fa.pkl")
