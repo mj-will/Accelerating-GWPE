@@ -36,7 +36,7 @@ class Data(object):
     @property
     def _extrinsic_parameters(self):
         """Return a list of extrinsic parameters"""
-        return list(['ra', 'dec', 'iota', 'psi', 'luminosity_distance', 'phase', 'geocent_time'])
+        return list(['ra', 'dec', 'iota', 'psi', 'luminosity_distance', 'phase', 'geocent_time', 'theta_jn'])
 
     @property
     def _intrinsic_parameters(self):
