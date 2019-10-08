@@ -9,7 +9,7 @@ class Data(object):
         """Initialize a class to load and process data"""
         if not data_path is None:
             self.data_path = data_path
-            self.samples_path = data_path + fanme
+            self.samples_path = data_path + fname
             self.header_path = data_path + hname
             self.ignore = ignore
             self.df = None
