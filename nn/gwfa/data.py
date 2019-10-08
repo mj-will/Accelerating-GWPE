@@ -5,12 +5,12 @@ import itertools
 
 class Data(object):
 
-    def __init__(self, data_path=None, ignore=None):
+    def __init__(self, data_path=None, ignore=None, fname="nested_samples.dat", hname="header.txt"):
         """Initialize a class to load and process data"""
         if not data_path is None:
             self.data_path = data_path
-            self.samples_path = data_path + "nested_samples.dat"
-            self.header_path = data_path + "header.txt"
+            self.samples_path = data_path + fanme
+            self.header_path = data_path + hname
             self.ignore = ignore
             self.df = None
 
@@ -91,6 +91,10 @@ class Data(object):
         """Normalize the logL"""
         return (x - x.min()) / (x.max() - x.min())
 
+    def exp_logL(self, x):
+        """Convert logL to likelihood"""
+        return np.log(x)
+
     def prep_data_chain(self, block_size=1000, norm_logL=False, norm_intrinsic=False, norm_extrinsic=False):
         """
         Prep the data to emulate the output of a nested sampling algorithm
@@ -114,6 +118,7 @@ class Data(object):
         # drop inital values
         if norm_logL:
             self.logL = np.apply_along_axis(self.normalize_logL, 0, self.logL)[diff:].reshape(self.N_blocks, self.block_size)
+            #self.logL = self.exp_logL(self.logL)[diff:].reshape(self.N_blocks, self.block_size)
         else:
             self.logL = self.logL[diff:].reshape(self.N_blocks, self.block_size)
         # intrinsic
