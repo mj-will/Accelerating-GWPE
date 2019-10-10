@@ -16,7 +16,7 @@ def KL(y_true, y_pred):
     y_pred = K.exp(y_pred)
     P = (y_true / K.sum(y_true)) + K.epsilon()
     Q = y_pred / K.sum(y_pred) + K.epsilon()
-    return K.sum(P * K.log(P / Q))
+    return K.sum(P * tf.math.log(P / Q))
 
 def JSD(y_true, y_pred):
     """Compute the Jenson-Shannon divergence"""
@@ -26,7 +26,7 @@ def JSD(y_true, y_pred):
     Q = y_pred / K.sum(y_pred) + K.epsilon()
     const = K.constant(0.5)
     M = const * (P + Q)
-    return const * K.sum(P * K.log(P / M)) + const * K.sum(Q * K.log(Q / M))
+    return const * K.sum(P * tf.math.log(P / M)) + const * K.sum(Q * tf.math.log(Q / M))
 
 def get_parameters_from_json(model_path, verbose=1):
     """Get the parameters for the nn from the model.json file"""
