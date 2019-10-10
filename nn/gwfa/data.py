@@ -114,25 +114,28 @@ class Data(object):
         self.N_blocks = int(np.floor(self.N_points / self.block_size))
         print('Block size:', self.block_size)
         print('Number of blocks:', self.N_blocks)
-        diff = int(np.abs(self.N_blocks * self.block_size - self.N_points))
+        diff = int(-np.abs(self.N_blocks * self.block_size - self.N_points))
+        # if diff is zero indexing will no work, so set to None
+        if not diff:
+            diff = None
         # drop inital values
         if norm_logL:
-            self.logL = np.apply_along_axis(self.normalize_logL, 0, self.logL)[diff:].reshape(self.N_blocks, self.block_size)
+            self.logL = np.apply_along_axis(self.normalize_logL, 0, self.logL)[:diff].reshape(self.N_blocks, self.block_size)
             #self.logL = self.exp_logL(self.logL)[diff:].reshape(self.N_blocks, self.block_size)
         else:
-            self.logL = self.logL[diff:].reshape(self.N_blocks, self.block_size)
+            self.logL = self.logL[:diff].reshape(self.N_blocks, self.block_size)
         # intrinsic
         if self.N_intrinsic:
             if norm_intrinsic:
-                self.intrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.intrinsic_parameters)[diff:, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
+                self.intrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.intrinsic_parameters)[:diff, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
             else:
-                self.intrinsic_parameters = self.intrinsic_parameters[diff:, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
+                self.intrinsic_parameters = self.intrinsic_parameters[:diff, :].reshape(self.N_blocks, self.block_size, self.N_intrinsic)
         # extrinsic
         if self.N_extrinsic:
             if norm_extrinsic:
-                self.extrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.extrinsic_parameters)[diff:, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
+                self.extrinsic_parameters = np.apply_along_axis(self.normalize_parameters, 0, self.extrinsic_parameters)[:diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
             else:
-                self.extrinsic_parameters = self.extrinsic_parameters[diff:, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
+                self.extrinsic_parameters = self.extrinsic_parameters[:diff, :].reshape(self.N_blocks, self.block_size, self.N_extrinsic)
         # if the print out has a zero this indicates the absence of said type of parameters
         print('X shape:', self.intrinsic_parameters.shape, self.extrinsic_parameters.shape)
         print('Y shape:', self.logL.shape)
