@@ -10,6 +10,7 @@ from keras.optimizers import SGD, RMSprop, Adam
 from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping, TensorBoard
 
 from gwfa import utils
+from gwfa.utils.normalisation import ELU, IELU
 
 class FunctionApproximator(object):
 
@@ -17,7 +18,7 @@ class FunctionApproximator(object):
         if json_file is not None and attr_dict is not None:
             raise ValueError("Provided both json file and attribute dict, use one or other")
         elif json_file is not None:
-            self.verbose=verbose
+            self.verbose = verbose
             # make sure input_shape is a list
             # also determine whether to split inputs or not
             if type(input_shape) == int:
@@ -33,15 +34,15 @@ class FunctionApproximator(object):
             self.model = None
             self._count = 0
             self.normalise = False
+            self.normalise_output = False
             if parameter_names is None:
                 self.parameter_names = ["parameter_" + str(i) for i in range(self._n_parameters)]
             else:
                 self.parameter_names = parameter_names
             self.setup_from_json(json_file)
         elif attr_dict is not None:
-            self.n_inputs=False
-            self.verbose=verbose
-            self.setup_from_attr_dict(attr_dict)
+            self.n_inputs = False
+            self.setup_from_attr_dict(attr_dict, verbose=verbose)
         else:
             raise ValueError("No json file or saved FA file for setup")
 
@@ -54,7 +55,7 @@ class FunctionApproximator(object):
         """Return the number of input parameters"""
         return sum(self.input_shape)
 
-    def setup_from_attr_dict(self, attr_dict):
+    def setup_from_attr_dict(self, attr_dict, verbose=0):
         """Set up the approximator from a dictionary of attributes"""
         with open(attr_dict, "rb") as f:
             d = six.moves.cPickle.load(f, encoding='latin1')
@@ -62,6 +63,7 @@ class FunctionApproximator(object):
             setattr(self, key, value)
         if self.n_inputs:
             self.input_shape = self.n_inputs
+        self.verbose = verbose
         self.model = utils.network.network(self.input_shape, self.parameters, self.verbose)
         self._compile_network()
 
@@ -114,7 +116,7 @@ class FunctionApproximator(object):
         p = np.random.permutation(len(y))
         return x[p], y[p]
 
-    def setup_normalisation(self, priors):
+    def setup_normalisation(self, priors, normalise_output=False, f=None, inv_f=None, f_kwargs=None):
         """
         Get range of priors for the parameters to be later used for normalisation
         NOTE: expect parameters to be ordered in same order as parameter sets
@@ -122,6 +124,27 @@ class FunctionApproximator(object):
         self._prior_max = np.max(priors, axis=0)
         self._prior_min = np.min(priors, axis=0)
         self.normalise = True
+        if normalise_output:
+            if f is None and inv_f is None:
+                self._output_norm_f = ELU
+                self._output_norm_inv_f = IELU
+                if not f_kwargs is None:
+                    print("Setting up default output normalisation with custom values")
+                    self._output_norm_kwargs = f_kwargs
+                else:
+                    print("Setting up defautl output normalisation with default values")
+                    self._output_norm_kwargs = dict(alpha=0.01)
+            elif f is None or inv_f is None:
+                raise RuntimeError("Must provide both normalisation function and its inverse.")
+            else:
+                print("Setting up output normalisation with custom function")
+                self._output_norm_f = f
+                self._output_norm_inv_f = inv_f
+                if not f_kwargs is None:
+                    self._output_norm_kwargs = f_kwargs
+                else:
+                    self._output_norm_kwargs = dict()
+            self.normalise_output = True
 
     @property
     def _priors(self):
@@ -131,6 +154,14 @@ class FunctionApproximator(object):
     def _normalise_input_data(self, x):
         """Normalise the input data given the prior values provided at setup"""
         return (x - self._prior_min) / (self._prior_max - self._prior_min)
+
+    def _normalise_output_data(self, x):
+        """Normalise the output (normally loglikelihood) using a function"""
+        return self._output_norm_f(x, **self._output_norm_kwargs)
+
+    def _denormalise_output_data(self, x):
+        """Denormalise the output (normally loglikelihood) using the inverse of the function"""
+        return self._output_norm_inv_f(x, **self._output_norm_kwargs)
 
     @property
     def _training_parameters(self):
@@ -165,6 +196,9 @@ class FunctionApproximator(object):
 
         if self.normalise:
             x = self._normalise_input_data(x)
+        # if normalising output all ouput data will be saved normalised
+        if self.normalise_output:
+            y = self._normalise_output_data(y)
         # accumlate data if flag true and not the first instance of training
         if accumulate and self._count:
             x = np.concatenate([self._accumulated_data[0], x], axis=0)
@@ -231,12 +265,32 @@ class FunctionApproximator(object):
         """Load weights for the model"""
         self.model.load_weights(weights_file)
 
-    def predict(self, x):
+    def predict(self, x, return_input=True):
         """Get predictions for a given set of points in parameter space that have not been normalised"""
-        norm_x = self._normalise_input_data(x)
-        split_x = self._split_data(norm_x)
-        y = np.float64(self.model.predict(split_x).ravel())
-        return norm_x, y
+        # normalise if used in training
+        if self.normalise:
+            input_data = self._normalise_input_data(x)
+        # split data (returns input if N/A)
+        split_input_data = self._split_data(input_data)
+        # predict
+        y = np.float64(self.model.predict(split_input_data).ravel())
+        # denormalise if output is normalised
+        if self.normalise_output:
+            output_data = self._denormalise_output(y)
+        # return
+        if return_input:
+            return input_data, output_data
+        else:
+            return output_data
+
+    def predict_normed(self, x, return_input=True):
+        """Get predictions for data that is already scaled to [0, 1]"""
+        split_data = self._split_data(x)
+        output_data = self.model.predict(split_data).ravel()
+        if return_input:
+            return split_data, output_data
+        else:
+            return output_data
 
     def _make_run_dir(self):
         """Check run count and make outdir"""
