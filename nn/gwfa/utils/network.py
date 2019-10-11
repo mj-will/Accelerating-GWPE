@@ -3,12 +3,12 @@ import json
 import numpy as np
 
 import tensorflow as tf
-import keras.backend as K
+import tensorflow.keras.backend as K
 
-from keras.models import Sequential, Model
-from keras.layers import Dense, Activation, Dropout, concatenate, Input
-from keras.layers.normalization import BatchNormalization
-from keras import regularizers
+from tensorflow.keras.models import Sequential, Model
+from tensorflow.keras.layers import Dense, Activation, Dropout, concatenate, Input, BatchNormalization
+#from tensorflow.keras.layers.normalization import BatchNormalization
+from tensorflow.keras import regularizers
 
 def KL(y_true, y_pred):
     """Return kullback-Leibler divergence"""

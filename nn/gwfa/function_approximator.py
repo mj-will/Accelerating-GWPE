@@ -6,8 +6,8 @@ import numpy as np
 import deepdish
 import time
 
-from keras.optimizers import SGD, RMSprop, Adam
-from keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping, TensorBoard
+from tensorflow.keras.optimizers import SGD, RMSprop, Adam
+from tensorflow.keras.callbacks import LearningRateScheduler, ModelCheckpoint, EarlyStopping, TensorBoard
 
 from gwfa import utils
 from gwfa.utils.normalisation import ELU, IELU
