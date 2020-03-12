@@ -58,7 +58,7 @@ pegasus-wms==4.9.2
 Pillow==6.1.0
 pluggy==0.13.0
 protobuf==3.9.2
-psutil==5.6.3
+psutil==5.6.6
 psycopg2==2.8.2
 py==1.8.0
 pycparser==2.19
