@@ -7,7 +7,7 @@ def set_keras_device(device="GPU0", gpu_fraction=0.3):
     device_type = device.rstrip("0123456789")
     import tensorflow as tf
     os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-    import keras.backend as K
+    import tensorflow.keras.backend as K
     if device_type == "GPU" or device_type == "gpu":
         # if no gpu is specified will use 0
         if device_type is not device:
@@ -17,15 +17,15 @@ def set_keras_device(device="GPU0", gpu_fraction=0.3):
         # set available gpu
         os.environ["CUDA_VISIBLE_DEVICES"] = device_number
         print("Setting up Keras to use GPU with miminal memory on {}".format(device_number))
-        config = tf.ConfigProto()
+        config = tf.compat.v1.ConfigProto()
         config.gpu_options.allow_growth = True
         config.gpu_options.per_process_gpu_memory_fraction = gpu_fraction
     elif device_type == "CPU" or device_type == "cpu":
         print("Setting up Keras to use CPU")
-        config = tf.ConfigProto(device_count = {"GPU": 0})
+        config = tf.compat.v1.ConfigProto(device_count = {"GPU": 0})
     # set up session
-    K.tensorflow_backend.set_session(tf.Session(config=config))
-    sess = tf.Session(config=config)
+    K.set_session(tf.compat.v1.Session(config=config))
+    sess = tf.compat.v1.Session(config=config)
 
 def fuzz():
     """Fuzz factor to avoid NaNs"""

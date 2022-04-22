@@ -30,24 +30,28 @@ def likelihood_grid(priors, likelihood, N=10, outdir="./"):
     i = 0
     log_l = np.empty([M, 1])
     points = np.empty([M, len(param_grid)])
+    log_prior = np.empty([M, 1])
     for params in grid:
         # set the parameters
         likelihood.parameters = {**fixed_params, **params}
         points[i, :] = list(params.values())
         # compute logL
         log_l[i] = (likelihood.log_likelihood())
+        log_prior[i] = 0.
         if not i % 10:
             print(f"Progress: {i}/{M}", end="\r")
         i += 1
     print(f"Finished: {M}/{M}")
     sys.stdout.flush()
     print("Done")
-    data = np.concatenate([points, log_l], axis=1)
+    data = np.concatenate([points, log_l, log_prior], axis=1)
     np.savetxt(os.path.join(
                 outdir,"grid_samples.dat"),
                 data,
-                header=" ".join([*params] + ["logL"]),
+                header=" ".join([*params] + ["logL", "logPrior"]),
                 newline="\n",delimiter=" ")
 
+    with open(outdir + "header.txt", "w") as text_file:
+        text_file.write(" ".join([*params] + ["logL", "logPrior"]))
 
 
